@@ -1,0 +1,6 @@
+{
+  "name": "OpportunityHub Liberia",
+  "description": "Liberia's Digital Opportunity Marketplace connecting job seekers, businesses, tenders, scholarships, investors, and organizations across all 15 counties.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
