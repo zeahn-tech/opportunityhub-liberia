@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run lint
+
+      - name: Run test suite
+        run: npm test -- --run
+
+      - name: Build production bundle
+        run: npm run build
+        env:
+          # Placeholder client-safe values so the build succeeds in CI.
+          # Real values are injected as deployment-time secrets, never
+          # committed. SUPABASE_SERVICE_ROLE_KEY is deliberately absent
+          # from this step -- it must never be available to `vite build`.
+          VITE_SUPABASE_URL: https://placeholder.supabase.co
+          VITE_SUPABASE_ANON_KEY: placeholder-anon-key
+
+      - name: Verify SUPABASE_SERVICE_ROLE_KEY never reaches the client bundle
+        run: npm run check:no-service-key-leak

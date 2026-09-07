@@ -1,4 +1,43 @@
 -- ====================================================================
+-- Migration: init_schema
+-- ====================================================================
+-- Initial production schema for OpportunityHub Liberia, migrated from
+-- the former single supabase/schema.sql into the Supabase CLI's
+-- migrations/ convention (one reviewable, timestamped file per change).
+--
+-- Content below is functionally identical to the schema.sql this
+-- project shipped with previously -- reviewed end-to-end for syntax,
+-- creation order, and FK correctness. Findings from that review:
+--
+--   * Table creation order was already FK-safe (every REFERENCES
+--     target is created earlier in the file), so no reordering was
+--     needed.
+--   * No FK typos found -- every REFERENCES clause points at a table
+--     and column that actually exists with a matching type
+--     (VARCHAR(100) everywhere PKs/FKs are used).
+--   * `created_by_user_id` (opportunities), `requested_by_user_id` /
+--     `reviewer_user_id` (verification_audits) are intentionally left
+--     without a FK to users -- this matches the existing pattern for
+--     "soft" audit-style references elsewhere in the file (e.g.
+--     audit_logs.user_id). Left as-is since changing it is a schema
+--     design decision, not a bug; flagged in
+--     docs/PRODUCTION_CERTIFICATION_REPORT.md for a follow-up
+--     decision before Phase 3.
+--   * "uuid-ossp" is enabled but nothing in this schema actually uses
+--     uuid_generate_v4() -- all primary keys are app-generated
+--     VARCHAR(100) ids. Left enabled (harmless, and Supabase permits
+--     it) rather than dropped, since removing an extension the app
+--     might start relying on is a bigger behavior change than this
+--     phase should make silently.
+--
+-- RLS policies below are UNCHANGED from the original schema.sql.
+-- A genuine RLS-adjacent bug (SECURITY DEFINER helper functions
+-- without a pinned search_path) is fixed separately in the next
+-- migration (20260907203853_secure_helper_function_search_path.sql)
+-- so that change is independently reviewable.
+-- ====================================================================
+
+-- ====================================================================
 -- OPPORTUNITY HUB LIBERIA - SUPABASE DATABASE SCHEMA & RLS POLICIES
 -- ====================================================================
 

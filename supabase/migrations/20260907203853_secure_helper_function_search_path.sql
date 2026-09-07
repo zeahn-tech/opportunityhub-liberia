@@ -1,0 +1,31 @@
+-- ====================================================================
+-- Migration: secure_helper_function_search_path
+-- ====================================================================
+-- Concrete bug found in the original RLS policy set (not a rewrite of
+-- policy logic -- the access rules public.is_org_member() and
+-- public.is_org_admin() enforce are unchanged):
+--
+-- Both helper functions are declared `SECURITY DEFINER` so they can
+-- read public.organization_memberships even though the caller's own
+-- RLS on that table wouldn't allow it directly (this is required --
+-- without it, the "Org members can view other members" policy on
+-- organization_memberships would recurse into itself). A
+-- SECURITY DEFINER function runs with the privileges of the function
+-- owner, but if it does not pin `search_path`, a caller can create an
+-- object (e.g. a table or function named `organization_memberships`)
+-- in a schema earlier in *their own* session's search_path and trick
+-- the function into resolving the unqualified name to the attacker's
+-- object instead of public.organization_memberships. This is the
+-- standard Postgres "SECURITY DEFINER search_path hijacking" issue
+-- (flagged by Supabase's own database linter as
+-- `function_search_path_mutable`).
+--
+-- Both functions already schema-qualify `public.organization_memberships`
+-- in their body, which limits (but per Postgres docs does not fully
+-- eliminate, since operators/casts can still be resolved via
+-- search_path) the exposure. Pinning search_path closes the gap
+-- completely and costs nothing functionally.
+-- ====================================================================
+
+ALTER FUNCTION public.is_org_member(VARCHAR) SET search_path = public, pg_temp;
+ALTER FUNCTION public.is_org_admin(VARCHAR) SET search_path = public, pg_temp;
