@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { validateUploadedFile } from '../../core/security/fileValidator';
 import {
   CandidateProfile,
   CandidatePrivacySettings,
@@ -276,8 +277,9 @@ export const CandidateProfileEditor: React.FC<CandidateProfileEditorProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 5 * 1024 * 1024) {
-      showToast('File size must be under 5MB.', 'error');
+    const validation = validateUploadedFile(file, 'cv');
+    if (!validation.valid) {
+      showToast(validation.error || 'CV upload failed validation checks.', 'error');
       return;
     }
 
@@ -286,17 +288,17 @@ export const CandidateProfileEditor: React.FC<CandidateProfileEditorProps> = ({
       const dataUrl = reader.result as string;
       setFormData((prev) => ({
         ...prev,
-        cvFileName: file.name,
+        cvFileName: validation.cleanFileName,
         cv: {
           id: `cv-${Date.now()}`,
-          fileName: file.name,
+          fileName: validation.cleanFileName,
           fileSizeFormatted: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
           uploadedAt: new Date().toISOString(),
           fileDataUrl: dataUrl,
-          summaryExtract: `Uploaded curriculum vitae for ${prev.fullName} (${file.name}). Validated for Liberian institutional recruitment.`
+          summaryExtract: `Uploaded curriculum vitae for ${prev.fullName} (${validation.cleanFileName}). Validated for Liberian institutional recruitment.`
         }
       }));
-      showToast(`Resume "${file.name}" attached successfully.`, 'success');
+      showToast(`Resume "${validation.cleanFileName}" attached successfully.`, 'success');
     };
     reader.readAsDataURL(file);
   };
@@ -536,7 +538,7 @@ export const CandidateProfileEditor: React.FC<CandidateProfileEditorProps> = ({
             ) : (
               <div className="space-y-4">
                 {formData.experience.map((exp, idx) => (
-                  <div key={exp.id} className="p-4 bg-[#F9F8F6] rounded-2xl border border-[#E8E4D9] space-y-3 relative">
+                  <div key={exp.id || `exp-${idx}`} className="p-4 bg-[#F9F8F6] rounded-2xl border border-[#E8E4D9] space-y-3 relative">
                     <button
                       type="button"
                       onClick={() => removeExperience(exp.id)}
@@ -671,8 +673,8 @@ export const CandidateProfileEditor: React.FC<CandidateProfileEditorProps> = ({
               </div>
             ) : (
               <div className="space-y-4">
-                {formData.education.map((edu) => (
-                  <div key={edu.id} className="p-4 bg-[#F9F8F6] rounded-2xl border border-[#E8E4D9] space-y-3 relative">
+                {formData.education.map((edu, idx) => (
+                  <div key={edu.id || `edu-${idx}`} className="p-4 bg-[#F9F8F6] rounded-2xl border border-[#E8E4D9] space-y-3 relative">
                     <button
                       type="button"
                       onClick={() => removeEducation(edu.id)}
@@ -869,8 +871,8 @@ export const CandidateProfileEditor: React.FC<CandidateProfileEditorProps> = ({
               </div>
             ) : (
               <div className="space-y-3">
-                {formData.certifications.map((cert) => (
-                  <div key={cert.id} className="p-4 bg-[#F9F8F6] rounded-2xl border border-[#E8E4D9] space-y-3 relative">
+                {formData.certifications.map((cert, idx) => (
+                  <div key={cert.id || `cert-${idx}`} className="p-4 bg-[#F9F8F6] rounded-2xl border border-[#E8E4D9] space-y-3 relative">
                     <button
                       type="button"
                       onClick={() => removeCertification(cert.id)}
@@ -929,8 +931,8 @@ export const CandidateProfileEditor: React.FC<CandidateProfileEditorProps> = ({
             </div>
 
             <div className="space-y-3">
-              {formData.languages.map((lang) => (
-                <div key={lang.id} className="p-3 bg-[#F9F8F6] rounded-2xl border border-[#E8E4D9] flex items-center gap-3">
+              {formData.languages.map((lang, idx) => (
+                <div key={lang.id || lang.language || `lang-${idx}`} className="p-3 bg-[#F9F8F6] rounded-2xl border border-[#E8E4D9] flex items-center gap-3">
                   <div className="flex-1">
                     <input
                       type="text"
@@ -1059,8 +1061,8 @@ export const CandidateProfileEditor: React.FC<CandidateProfileEditorProps> = ({
               </div>
             ) : (
               <div className="space-y-3">
-                {formData.portfolio.map((port) => (
-                  <div key={port.id} className="p-4 bg-[#F9F8F6] rounded-2xl border border-[#E8E4D9] space-y-3 relative">
+                {formData.portfolio.map((port, idx) => (
+                  <div key={port.id || `port-${idx}`} className="p-4 bg-[#F9F8F6] rounded-2xl border border-[#E8E4D9] space-y-3 relative">
                     <button
                       type="button"
                       onClick={() => removePortfolio(port.id)}

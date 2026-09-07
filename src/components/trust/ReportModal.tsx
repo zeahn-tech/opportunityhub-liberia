@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { AlertTriangle, ShieldAlert, X, CheckCircle, FileText, Lock } from 'lucide-react';
 import { ContentReportReason } from '../../types';
 import { trustSafetyService } from '../../services/trustSafetyService';
+import { useAuth } from '../../context/AuthContext';
 
 interface ReportModalProps {
   isOpen: boolean;
@@ -9,7 +10,7 @@ interface ReportModalProps {
   reportType: 'listing' | 'user' | 'message';
   targetId: string;
   targetTitleOrName: string;
-  currentUserId: string;
+  currentUserId?: string;
 }
 
 export const ReportModal: React.FC<ReportModalProps> = ({
@@ -18,8 +19,10 @@ export const ReportModal: React.FC<ReportModalProps> = ({
   reportType,
   targetId,
   targetTitleOrName,
-  currentUserId,
+  currentUserId: propUserId,
 }) => {
+  const { user } = useAuth();
+  const effectiveUserId = propUserId || user?.id || '';
   const [reason, setReason] = useState<ContentReportReason>('scam_fee_charging');
   const [details, setDetails] = useState('');
   const [evidenceUrl, setEvidenceUrl] = useState('');
@@ -31,6 +34,10 @@ export const ReportModal: React.FC<ReportModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!effectiveUserId) {
+      setErrorMessage('Please sign in to submit a trust and safety report.');
+      return;
+    }
     if (!details.trim()) {
       setErrorMessage('Please provide a brief explanation of the violation.');
       return;
@@ -44,7 +51,7 @@ export const ReportModal: React.FC<ReportModalProps> = ({
         reportType,
         targetId,
         targetTitleOrName,
-        reporterUserId: currentUserId,
+        reporterUserId: effectiveUserId,
         reason,
         details,
         evidenceUrls: evidenceUrl ? [evidenceUrl] : [],

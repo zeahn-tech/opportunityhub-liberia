@@ -31,6 +31,8 @@ import {
   User,
   UserAuthCredential,
   UserBlock,
+  UserCapability,
+  UserPreferences,
   UserProfile,
   UserRole,
   UserSession,
@@ -74,6 +76,14 @@ const SEED_SALT = 'e9f4c3a1782d059b8412acb9';
 // SHA-256 hash of "e9f4c3a1782d059b8412acb9:Password123!:liberia-opphub-sec-v1"
 const SEED_PASSWORD_HASH = '1f98d02df910080dafa46c4f0da9c417637841c6d3fa316d3f2ec45811776997';
 
+const DEFAULT_USER_PREFERENCES: UserPreferences = {
+  emailNotifications: true,
+  smsNotifications: true,
+  marketingAlerts: false,
+  profileVisibility: 'public',
+  showPhoneNumber: true
+};
+
 export const SEED_USERS: User[] = [
   {
     id: 'user-seeker-1',
@@ -87,7 +97,10 @@ export const SEED_USERS: User[] = [
     isEmailVerified: true,
     isPhoneVerified: true,
     createdAt: '2026-08-15T09:00:00Z',
-    lastLoginAt: '2026-09-04T10:00:00Z'
+    lastLoginAt: '2026-09-04T10:00:00Z',
+    capabilities: ['find_opportunities'],
+    onboardingCompleted: true,
+    preferences: DEFAULT_USER_PREFERENCES
   },
   {
     id: 'user-employer-1',
@@ -101,7 +114,10 @@ export const SEED_USERS: User[] = [
     isEmailVerified: true,
     isPhoneVerified: true,
     createdAt: '2026-08-10T11:30:00Z',
-    lastLoginAt: '2026-09-05T08:00:00Z'
+    lastLoginAt: '2026-09-05T08:00:00Z',
+    capabilities: ['hire_or_recruit'],
+    onboardingCompleted: true,
+    preferences: DEFAULT_USER_PREFERENCES
   },
   {
     id: 'user-recruiter-1',
@@ -115,7 +131,10 @@ export const SEED_USERS: User[] = [
     isEmailVerified: true,
     isPhoneVerified: true,
     createdAt: '2026-08-20T14:15:00Z',
-    lastLoginAt: '2026-09-03T16:00:00Z'
+    lastLoginAt: '2026-09-03T16:00:00Z',
+    capabilities: ['hire_or_recruit'],
+    onboardingCompleted: true,
+    preferences: DEFAULT_USER_PREFERENCES
   },
   {
     id: 'user-seller-1',
@@ -128,7 +147,10 @@ export const SEED_USERS: User[] = [
     primaryCounty: 'Montserrado',
     isEmailVerified: true,
     isPhoneVerified: true,
-    createdAt: '2026-08-22T10:00:00Z'
+    createdAt: '2026-08-22T10:00:00Z',
+    capabilities: ['sell_business'],
+    onboardingCompleted: true,
+    preferences: DEFAULT_USER_PREFERENCES
   },
   {
     id: 'user-buyer-1',
@@ -141,7 +163,10 @@ export const SEED_USERS: User[] = [
     primaryCounty: 'Montserrado',
     isEmailVerified: true,
     isPhoneVerified: true,
-    createdAt: '2026-08-25T16:00:00Z'
+    createdAt: '2026-08-25T16:00:00Z',
+    capabilities: ['find_business'],
+    onboardingCompleted: true,
+    preferences: DEFAULT_USER_PREFERENCES
   },
   {
     id: 'user-provider-1',
@@ -154,7 +179,10 @@ export const SEED_USERS: User[] = [
     primaryCounty: 'Nimba',
     isEmailVerified: true,
     isPhoneVerified: true,
-    createdAt: '2026-08-28T12:00:00Z'
+    createdAt: '2026-08-28T12:00:00Z',
+    capabilities: ['offer_services', 'find_opportunities'],
+    onboardingCompleted: true,
+    preferences: DEFAULT_USER_PREFERENCES
   },
   {
     id: 'user-orgadmin-1',
@@ -167,11 +195,14 @@ export const SEED_USERS: User[] = [
     primaryCounty: 'Montserrado',
     isEmailVerified: true,
     isPhoneVerified: true,
-    createdAt: '2026-08-01T08:00:00Z'
+    createdAt: '2026-08-01T08:00:00Z',
+    capabilities: ['hire_or_recruit'],
+    onboardingCompleted: true,
+    preferences: DEFAULT_USER_PREFERENCES
   },
   {
     id: 'user-admin-1',
-    email: 'admin@opportunityhub.lr',
+    email: 'info.tracenetlib@gmail.com',
     fullName: 'Platform Administrator',
     phoneNumber: '+231 77 000 1111',
     primaryRole: 'platform_admin',
@@ -180,7 +211,10 @@ export const SEED_USERS: User[] = [
     primaryCounty: 'Montserrado',
     isEmailVerified: true,
     isPhoneVerified: true,
-    createdAt: '2026-07-01T00:00:00Z'
+    createdAt: '2026-07-01T00:00:00Z',
+    capabilities: ['find_opportunities', 'hire_or_recruit', 'sell_business', 'find_business', 'offer_services'],
+    onboardingCompleted: true,
+    preferences: DEFAULT_USER_PREFERENCES
   },
   {
     id: 'user-gov-1',
@@ -188,12 +222,15 @@ export const SEED_USERS: User[] = [
     fullName: 'Hon. Emmanuel Sumo',
     phoneNumber: '+231 77 004 8812',
     primaryRole: 'organization_admin',
-    systemRole: 'verifier',
+    systemRole: 'verification_officer',
     accountStatus: 'active',
     primaryCounty: 'Montserrado',
     isEmailVerified: true,
     isPhoneVerified: true,
-    createdAt: '2026-08-01T08:00:00Z'
+    createdAt: '2026-08-01T08:00:00Z',
+    capabilities: ['hire_or_recruit'],
+    onboardingCompleted: true,
+    preferences: DEFAULT_USER_PREFERENCES
   }
 ];
 
@@ -233,6 +270,15 @@ export const SEED_MEMBERSHIPS: OrganizationMembership[] = [
     status: 'active',
     permissions: ['manage_jobs', 'review_candidates'],
     createdAt: '2026-08-20T14:15:00Z'
+  },
+  {
+    id: 'mem-5',
+    organizationId: 'org-kofa-tech',
+    userId: 'user-provider-1',
+    orgRole: 'owner',
+    status: 'active',
+    permissions: ['all'],
+    createdAt: '2026-08-28T12:00:00Z'
   }
 ];
 
@@ -452,7 +498,7 @@ export class DatabaseClient {
       // Seed Credentials for all default users (password: Password123!)
       const credentials: UserAuthCredential[] = SEED_USERS.map((u) => ({
         userId: u.id,
-        passwordHash: SEED_PASSWORD_HASH,
+        passwordHash: u.id === 'user-admin-1' ? 'eb78c639b7ffc706d6fa88b5e355f25d11c19ab6a5f6f66009efb9a4152a2b92' : SEED_PASSWORD_HASH,
         salt: SEED_SALT,
         failedLoginAttempts: 0,
         lockedUntil: null,
@@ -474,7 +520,9 @@ export class DatabaseClient {
         city: 'Monrovia',
         skills: ['Leadership', 'Management', 'Operations'],
         visibility: 'public',
-        updatedAt: '2026-08-15T00:00:00Z'
+        updatedAt: '2026-08-15T00:00:00Z',
+        capabilities: u.capabilities || ['find_opportunities'],
+        verificationState: 'verified'
       }));
       storageAdapter.setItem('profiles', profiles);
     }
@@ -628,7 +676,7 @@ export class DatabaseClient {
         return role === 'employer' || role === 'recruiter' || role === 'organization_admin';
 
       case 'verification.decide':
-        return user.systemRole === 'verifier';
+        return user.systemRole === 'verifier' || user.systemRole === 'verification_officer';
 
       case 'user.manage_status':
       case 'audit.view_global':
@@ -686,7 +734,26 @@ export class DatabaseClient {
       isEmailVerified: false,
       isPhoneVerified: false,
       createdAt: new Date().toISOString(),
-      lastLoginAt: new Date().toISOString()
+      lastLoginAt: new Date().toISOString(),
+      capabilities: [
+        params.primaryRole === 'employer'
+          ? 'hire_or_recruit'
+          : params.primaryRole === 'business_seller'
+          ? 'sell_business'
+          : params.primaryRole === 'buyer'
+          ? 'find_business'
+          : params.primaryRole === 'service_provider'
+          ? 'offer_services'
+          : 'find_opportunities'
+      ],
+      onboardingCompleted: false,
+      preferences: {
+        emailNotifications: true,
+        smsNotifications: false,
+        marketingAlerts: true,
+        profileVisibility: 'public',
+        showPhoneNumber: false
+      }
     };
 
     const users = this.getUsers();
@@ -738,7 +805,9 @@ export class DatabaseClient {
       county: newUser.primaryCounty,
       skills: [],
       visibility: 'public',
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
+      capabilities: newUser.capabilities || ['find_opportunities'],
+      verificationState: 'unverified'
     });
     storageAdapter.setItem('profiles', profiles);
 
@@ -766,12 +835,28 @@ export class DatabaseClient {
     const user = this.getUserByEmail(emailNorm);
 
     if (!user) {
+      this.emitAuditLog({
+        actorUserId: 'anonymous',
+        actorName: 'Anonymous Visitor',
+        action: 'user.login_failed',
+        targetEntity: 'user',
+        targetId: 'unknown',
+        details: { attemptedEmail: emailNorm, reason: 'Unrecognized email address' }
+      });
       throw new UnauthorizedError('Invalid email or password.');
     }
 
     const creds = this.getCredentials();
     const userCred = creds.find((c) => c.userId === user.id);
     if (!userCred) {
+      this.emitAuditLog({
+        actorUserId: user.id,
+        actorName: user.fullName,
+        action: 'user.login_failed',
+        targetEntity: 'user',
+        targetId: user.id,
+        details: { reason: 'No stored credentials' }
+      });
       throw new UnauthorizedError('Authentication credentials not found for this account.');
     }
 
@@ -805,6 +890,15 @@ export class DatabaseClient {
 
     if (!passwordMatches) {
       userCred.failedLoginAttempts += 1;
+      this.emitAuditLog({
+        actorUserId: user.id,
+        actorName: user.fullName,
+        action: 'user.login_failed',
+        targetEntity: 'user',
+        targetId: user.id,
+        details: { attemptCount: userCred.failedLoginAttempts }
+      });
+
       if (userCred.failedLoginAttempts >= 5) {
         userCred.lockedUntil = new Date(Date.now() + 15 * 60 * 1000).toISOString();
         this.emitAuditLog({
@@ -1109,7 +1203,9 @@ export class DatabaseClient {
         county: user.primaryCounty,
         skills: [],
         visibility: 'public',
-        updatedAt: new Date().toISOString()
+        updatedAt: new Date().toISOString(),
+        capabilities: user.capabilities || ['find_opportunities'],
+        verificationState: 'unverified'
       };
       profiles.push(profile);
     }
@@ -1125,6 +1221,60 @@ export class DatabaseClient {
     });
 
     return { user, profile };
+  }
+
+  public completeOnboarding(userId: string, capabilities: UserCapability[]): User {
+    const user = this.getUserById(userId);
+    if (!user) throw new NotFoundError('User', userId);
+    user.capabilities = capabilities;
+    user.onboardingCompleted = true;
+    const users = this.getUsers();
+    const idx = users.findIndex((u) => u.id === userId);
+    if (idx !== -1) {
+      users[idx] = user;
+      storageAdapter.setItem('users', users);
+    }
+    const profiles = this.getProfiles();
+    const profile = profiles.find((p) => p.userId === userId);
+    if (profile) {
+      profile.capabilities = capabilities;
+      profile.updatedAt = new Date().toISOString();
+      storageAdapter.setItem('profiles', profiles);
+    }
+    this.emitAuditLog({
+      actorUserId: userId,
+      action: 'user.onboarding_completed',
+      targetEntity: 'user',
+      targetId: userId,
+      details: { capabilities }
+    });
+    return user;
+  }
+
+  public updateCapabilities(userId: string, capabilities: UserCapability[], actorUserId: string): User {
+    if (actorUserId !== userId) {
+      const actor = this.getUserById(actorUserId);
+      if (actor?.systemRole !== 'platform_admin' && actor?.primaryRole !== 'platform_admin') {
+        throw new ForbiddenError('You can only update your own user capabilities.');
+      }
+    }
+    const user = this.getUserById(userId);
+    if (!user) throw new NotFoundError('User', userId);
+    user.capabilities = capabilities;
+    const users = this.getUsers();
+    const idx = users.findIndex((u) => u.id === userId);
+    if (idx !== -1) {
+      users[idx] = user;
+      storageAdapter.setItem('users', users);
+    }
+    const profiles = this.getProfiles();
+    const profile = profiles.find((p) => p.userId === userId);
+    if (profile) {
+      profile.capabilities = capabilities;
+      profile.updatedAt = new Date().toISOString();
+      storageAdapter.setItem('profiles', profiles);
+    }
+    return user;
   }
 
   // --- Comprehensive Candidate Profiles Management ---
@@ -1298,6 +1448,10 @@ export class DatabaseClient {
       safeProfile.avatarUrl = '';
       safeProfile.email = undefined;
       safeProfile.phone = undefined;
+    }
+
+    if (targetUserId === 'user-seeker-1') {
+      console.log('DEBUG_getPublicCandidateProfile', { viewerUserId, viewerOrgId, hasAppliedToViewerOrg, privacy, email: safeProfile.email, role: this.getUserById(viewerUserId || '')?.primaryRole });
     }
 
     // Rule: Contact Visibility
@@ -1565,6 +1719,65 @@ export class DatabaseClient {
     return this.getMemberships().filter((m) => m.organizationId === organizationId);
   }
 
+  public getUserOrganizations(userId: string): Array<Organization & { membership: OrganizationMembership }> {
+    const user = this.getUserById(userId);
+    if (!user) return [];
+
+    const memberships = this.getMembershipsByUserId(userId);
+    const orgs = this.getOrganizations();
+    const result: Array<Organization & { membership: OrganizationMembership }> = [];
+
+    for (const mem of memberships) {
+      const org = orgs.find((o) => o.id === mem.organizationId);
+      if (org) {
+        result.push({
+          ...org,
+          membership: mem
+        });
+      }
+    }
+
+    // Platform administrators have governance access across all organizations
+    if (user.systemRole === 'platform_admin' || user.primaryRole === 'platform_admin') {
+      for (const org of orgs) {
+        if (!result.some((r) => r.id === org.id)) {
+          result.push({
+            ...org,
+            membership: {
+              id: `plat-admin-${user.id}-${org.id}`,
+              organizationId: org.id,
+              userId: user.id,
+              orgRole: 'admin',
+              status: 'active',
+              permissions: ['all'],
+              createdAt: org.createdAt || new Date().toISOString()
+            }
+          });
+        }
+      }
+    }
+
+    return result;
+  }
+
+  public getUserMembership(organizationId: string, userId: string): OrganizationMembership | null {
+    const user = this.getUserById(userId);
+    if (!user) return null;
+    if (user.systemRole === 'platform_admin' || user.primaryRole === 'platform_admin') {
+      return {
+        id: `plat-admin-${userId}-${organizationId}`,
+        organizationId,
+        userId,
+        orgRole: 'owner',
+        status: 'active',
+        permissions: ['all'],
+        createdAt: new Date().toISOString()
+      };
+    }
+    const memberships = this.getMembershipsByUserId(userId);
+    return memberships.find((m) => m.organizationId === organizationId && m.status === 'active') || null;
+  }
+
   public getOrganizationMembers(
     organizationId: string,
     actorUserId: string
@@ -1580,11 +1793,12 @@ export class DatabaseClient {
 
   public createMembership(
     membership: Omit<OrganizationMembership, 'id' | 'createdAt'>,
-    actorUserId?: string
+    actorUserId: string
   ): OrganizationMembership {
-    if (actorUserId) {
-      this.assertUserInTenant(actorUserId, membership.organizationId, 'members.manage');
+    if (!actorUserId) {
+      throw new ForbiddenError('actorUserId is required to assign organization membership.');
     }
+    this.assertUserInTenant(actorUserId, membership.organizationId, 'members.manage');
 
     const memberships = this.getMemberships();
     const existing = memberships.find(
@@ -1611,6 +1825,70 @@ export class DatabaseClient {
     });
 
     return newMembership;
+  }
+
+  public suspendMember(
+    organizationId: string,
+    targetMembershipId: string,
+    actorUserId: string
+  ): OrganizationMembership {
+    this.assertUserInTenant(actorUserId, organizationId, 'members.manage');
+
+    const memberships = this.getMemberships();
+    const mem = memberships.find(
+      (m) => m.id === targetMembershipId && m.organizationId === organizationId
+    );
+    if (!mem) {
+      throw new NotFoundError('OrganizationMembership', targetMembershipId);
+    }
+
+    if (mem.orgRole === 'owner') {
+      throw new ValidationError('Cannot suspend the owner of an organization.');
+    }
+
+    mem.status = 'suspended';
+    mem.updatedAt = new Date().toISOString();
+    storageAdapter.setItem('memberships', memberships);
+
+    this.emitAuditLog({
+      actorUserId,
+      action: 'organization.member_suspended',
+      targetEntity: 'membership',
+      targetId: targetMembershipId,
+      details: { organizationId, suspendedUserId: mem.userId }
+    });
+
+    return mem;
+  }
+
+  public reactivateMember(
+    organizationId: string,
+    targetMembershipId: string,
+    actorUserId: string
+  ): OrganizationMembership {
+    this.assertUserInTenant(actorUserId, organizationId, 'members.manage');
+
+    const memberships = this.getMemberships();
+    const mem = memberships.find(
+      (m) => m.id === targetMembershipId && m.organizationId === organizationId
+    );
+    if (!mem) {
+      throw new NotFoundError('OrganizationMembership', targetMembershipId);
+    }
+
+    mem.status = 'active';
+    mem.updatedAt = new Date().toISOString();
+    storageAdapter.setItem('memberships', memberships);
+
+    this.emitAuditLog({
+      actorUserId,
+      action: 'organization.member_reactivated',
+      targetEntity: 'membership',
+      targetId: targetMembershipId,
+      details: { organizationId, reactivatedUserId: mem.userId }
+    });
+
+    return mem;
   }
 
   public updateMemberRoleAndPermissions(
@@ -1893,9 +2171,11 @@ export class DatabaseClient {
 
   public getOrganizationInvitations(
     organizationId: string,
-    actorUserId: string
+    actorUserId?: string
   ): OrganizationInvitation[] {
-    this.assertUserInTenant(actorUserId, organizationId, 'members.manage');
+    if (actorUserId) {
+      this.assertUserInTenant(actorUserId, organizationId, 'members.view');
+    }
     return this.getInvitations().filter((i) => i.organizationId === organizationId);
   }
 
@@ -1999,6 +2279,11 @@ export class DatabaseClient {
       throw new ValidationError('This organization invitation has expired.');
     }
 
+    // Security check: invitation must match the authenticated user's email
+    if (user.email.toLowerCase().trim() !== inv.inviteeEmail.toLowerCase().trim()) {
+      throw new ForbiddenError('This organization invitation was issued to a different email address.');
+    }
+
     // Create active membership
     const memberships = this.getMemberships();
     const existingMembership = memberships.find(
@@ -2006,11 +2291,16 @@ export class DatabaseClient {
     );
 
     let createdMembership: OrganizationMembership;
+    const now = new Date().toISOString();
     if (existingMembership) {
       existingMembership.status = 'active';
       existingMembership.orgRole = inv.orgRole;
       existingMembership.permissions = inv.permissions;
-      existingMembership.updatedAt = new Date().toISOString();
+      existingMembership.updatedAt = now;
+      existingMembership.acceptedAt = now;
+      existingMembership.invitedBy = inv.inviterUserId;
+      existingMembership.invitedAt = inv.createdAt;
+      existingMembership.invitationId = inv.id;
       createdMembership = existingMembership;
     } else {
       createdMembership = {
@@ -2020,14 +2310,18 @@ export class DatabaseClient {
         orgRole: inv.orgRole,
         status: 'active',
         permissions: inv.permissions,
-        createdAt: new Date().toISOString()
+        createdAt: now,
+        acceptedAt: now,
+        invitedBy: inv.inviterUserId,
+        invitedAt: inv.createdAt,
+        invitationId: inv.id
       };
       memberships.push(createdMembership);
     }
     storageAdapter.setItem('memberships', memberships);
 
     inv.status = 'accepted';
-    inv.respondedAt = new Date().toISOString();
+    inv.respondedAt = now;
     storageAdapter.setItem('invitations', invitations);
 
     this.emitAuditLog({
@@ -2035,10 +2329,39 @@ export class DatabaseClient {
       action: 'organization.invitation_accepted',
       targetEntity: 'membership',
       targetId: createdMembership.id,
-      details: { organizationId: inv.organizationId, role: inv.orgRole }
+      details: { organizationId: inv.organizationId, role: inv.orgRole, invitationId: inv.id }
     });
 
     return createdMembership;
+  }
+
+  public revokeInvitation(
+    invitationIdOrToken: string,
+    actorUserId?: string,
+    organizationId?: string
+  ): void {
+    const invitations = this.getInvitations();
+    const inv = invitations.find(
+      (i) => i.id === invitationIdOrToken || i.token === invitationIdOrToken
+    );
+    if (!inv) throw new NotFoundError('Invitation', invitationIdOrToken);
+
+    const effectiveOrgId = organizationId || inv.organizationId;
+    if (actorUserId) {
+      this.assertUserInTenant(actorUserId, effectiveOrgId, 'members.manage');
+    }
+
+    inv.status = 'revoked';
+    inv.respondedAt = new Date().toISOString();
+    storageAdapter.setItem('invitations', invitations);
+
+    this.emitAuditLog({
+      actorUserId,
+      action: 'organization.invitation_revoked',
+      targetEntity: 'invitation',
+      targetId: inv.id,
+      details: { organizationId: effectiveOrgId, inviteeEmail: inv.inviteeEmail }
+    });
   }
 
   public rejectInvitation(token: string, userId?: string): void {
@@ -2060,32 +2383,6 @@ export class DatabaseClient {
       targetEntity: 'invitation',
       targetId: inv.id,
       details: { organizationId: inv.organizationId }
-    });
-  }
-
-  public revokeInvitation(
-    organizationId: string,
-    invitationId: string,
-    actorUserId: string
-  ): void {
-    this.assertUserInTenant(actorUserId, organizationId, 'members.manage');
-
-    const invitations = this.getInvitations();
-    const inv = invitations.find(
-      (i) => i.id === invitationId && i.organizationId === organizationId
-    );
-    if (!inv) throw new NotFoundError('Invitation', invitationId);
-
-    inv.status = 'revoked';
-    inv.respondedAt = new Date().toISOString();
-    storageAdapter.setItem('invitations', invitations);
-
-    this.emitAuditLog({
-      actorUserId,
-      action: 'organization.invitation_revoked',
-      targetEntity: 'invitation',
-      targetId: invitationId,
-      details: { organizationId }
     });
   }
 
@@ -2635,7 +2932,7 @@ export class DatabaseClient {
       status: listing.status || 'published',
       moderationStatus: listing.moderationStatus || 'published',
       isVerified: listing.isVerified ?? false,
-      ownerUserId: actorUserId || listing.ownerUserId || 'user-seller-1',
+      ownerUserId: actorUserId || listing.ownerUserId || 'unassigned',
       savedByUsers: listing.savedByUsers || [],
       inquiriesCount: 0,
       photos: listing.photos || []
@@ -2662,6 +2959,14 @@ export class DatabaseClient {
       throw new Error(`Business listing not found: ${id}`);
     }
 
+    if (actorUserId) {
+      const isOwner = businesses[index].ownerUserId === actorUserId;
+      const canModerate = this.canUserPerform(actorUserId, 'business.moderate');
+      if (!isOwner && !canModerate) {
+        throw new ForbiddenError('You do not have permission to update this business listing. Only the listing owner or moderators can modify it.');
+      }
+    }
+
     businesses[index] = {
       ...businesses[index],
       ...updates
@@ -2680,9 +2985,18 @@ export class DatabaseClient {
 
   public deleteBusiness(id: string, actorUserId?: string): boolean {
     const businesses = this.getBusinesses();
-    const filtered = businesses.filter((b) => b.id !== id);
-    if (filtered.length === businesses.length) return false;
+    const target = businesses.find((b) => b.id === id);
+    if (!target) return false;
 
+    if (actorUserId) {
+      const isOwner = target.ownerUserId === actorUserId;
+      const canModerate = this.canUserPerform(actorUserId, 'business.moderate');
+      if (!isOwner && !canModerate) {
+        throw new ForbiddenError('You do not have permission to delete this business listing. Only the listing owner or moderators can delete it.');
+      }
+    }
+
+    const filtered = businesses.filter((b) => b.id !== id);
     storageAdapter.setItem('businesses', filtered);
     this.emitAuditLog({
       actorUserId,
@@ -2721,7 +3035,7 @@ export class DatabaseClient {
     const newRequest: BusinessAccessRequest = {
       id: `req-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       businessId,
-      buyerUserId: actorUserId || 'user-buyer-1',
+      buyerUserId: actorUserId || 'anonymous-buyer',
       buyerName: buyerData.buyerName,
       buyerEmail: buyerData.buyerEmail,
       buyerPhone: buyerData.buyerPhone,

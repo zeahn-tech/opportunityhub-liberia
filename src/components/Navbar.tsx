@@ -14,12 +14,20 @@ import {
   Database,
   CreditCard,
   MessageSquare,
-  Bell
+  Bell,
+  Activity,
+  FileText,
+  Bookmark,
+  Settings
 } from 'lucide-react';
 import { UserProfileModal } from './auth/UserProfileModal';
 import { NotificationCenterModal } from './notifications/NotificationCenterModal';
+import { OrganizationSwitcher } from './organization/OrganizationSwitcher';
+import { OrganizationWizardModal } from './organization/OrganizationWizardModal';
+import { OrganizationTeamModal } from './organization/OrganizationTeamModal';
 import { db } from '../db/dbClient';
 import { PWAInstallButton } from './pwa/PWAInstallButton';
+import { envConfig } from '../config/env';
 
 interface NavbarProps {
   activeTab: 'opportunities' | 'businesses' | 'verification' | 'recruiter' | 'candidate' | 'ai-studio' | 'billing' | 'messages' | 'admin';
@@ -42,10 +50,12 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenPostModal,
   notificationCount: _notificationCount
 }) => {
-  const { user, activeOrganization, switchRole, openAuthModal, logout } = useAuth();
+  const { user, activeOrganization, switchRole, openAuthModal, logout, canAccessWorkspace } = useAuth();
   const [showRoleDropdown, setShowRoleDropdown] = useState(false);
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [isOrgWizardOpen, setIsOrgWizardOpen] = useState(false);
+  const [isOrgTeamModalOpen, setIsOrgTeamModalOpen] = useState(false);
   const [showNotificationsModal, setShowNotificationsModal] = useState(false);
   const [unreadNotifCount, setUnreadNotifCount] = useState(0);
 
@@ -138,12 +148,14 @@ export const Navbar: React.FC<NavbarProps> = ({
     }
   };
 
-  const userInitials = (user.fullName || 'User')
-    .split(' ')
-    .map((n) => n[0])
-    .join('')
-    .substring(0, 2)
-    .toUpperCase();
+  const userInitials = user
+    ? (user.fullName || 'User')
+        .split(' ')
+        .map((n) => n[0])
+        .join('')
+        .substring(0, 2)
+        .toUpperCase()
+    : '';
 
   return (
     <>
@@ -191,84 +203,103 @@ export const Navbar: React.FC<NavbarProps> = ({
             >
               Business M&A
             </button>
-            <button
-              onClick={() => setActiveTab('verification')}
-              className={`px-3 py-2 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
-                activeTab === 'verification'
-                  ? 'bg-[#ECF3E9] text-[#283618] font-bold'
-                  : 'hover:text-[#283618] hover:bg-[#F9F8F6]'
-              }`}
-            >
-              <ShieldCheck className="w-4 h-4 text-[#4F772D]" />
-              Verification Hub
-            </button>
-            <button
-              onClick={() => setActiveTab('recruiter')}
-              className={`px-3 py-2 rounded-xl transition-all cursor-pointer ${
-                activeTab === 'recruiter'
-                  ? 'bg-[#ECF3E9] text-[#283618] font-bold'
-                  : 'hover:text-[#283618] hover:bg-[#F9F8F6]'
-              }`}
-            >
-              Recruiter Studio
-            </button>
-            <button
-              onClick={() => setActiveTab('candidate')}
-              className={`px-3 py-2 rounded-xl transition-all flex items-center gap-1 cursor-pointer ${
-                activeTab === 'candidate'
-                  ? 'bg-[#ECF3E9] text-[#283618] font-bold'
-                  : 'hover:text-[#283618] hover:bg-[#F9F8F6]'
-              }`}
-            >
-              <span>Candidate Portal</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('ai-studio')}
-              className={`px-3 py-2 rounded-xl transition-all flex items-center gap-1 text-[#BC6C25] font-semibold cursor-pointer ${
-                activeTab === 'ai-studio'
-                  ? 'bg-[#FEFAE0] border border-[#E8E4D9]'
-                  : 'hover:bg-[#FEFAE0]/50'
-              }`}
-            >
-              <span>✨ AI Copilot</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('billing')}
-              className={`px-3 py-2 rounded-xl transition-all flex items-center gap-1 cursor-pointer ${
-                activeTab === 'billing'
-                  ? 'bg-[#ECF3E9] text-[#283618] font-bold'
-                  : 'hover:text-[#283618] hover:bg-[#F9F8F6]'
-              }`}
-            >
-              <span>Subscriptions</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('messages')}
-              className={`px-3 py-2 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
-                activeTab === 'messages'
-                  ? 'bg-[#ECF3E9] text-[#283618] font-bold'
-                  : 'hover:text-[#283618] hover:bg-[#F9F8F6]'
-              }`}
-            >
-              <MessageSquare className="w-4 h-4 text-[#4F772D]" />
-              <span>Messages</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('admin')}
-              className={`px-3 py-2 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
-                activeTab === 'admin'
-                  ? 'bg-[#283618] text-white font-bold'
-                  : 'bg-red-50 text-red-800 hover:bg-red-100'
-              }`}
-            >
-              <ShieldCheck className="w-4 h-4 text-red-600" />
-              <span>Trust & Safety</span>
-            </button>
+            {user && canAccessWorkspace('verification').allowed && (
+              <button
+                onClick={() => setActiveTab('verification')}
+                className={`px-3 py-2 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
+                  activeTab === 'verification'
+                    ? 'bg-[#ECF3E9] text-[#283618] font-bold'
+                    : 'hover:text-[#283618] hover:bg-[#F9F8F6]'
+                }`}
+              >
+                <ShieldCheck className="w-4 h-4 text-[#4F772D]" />
+                Verification Hub
+              </button>
+            )}
+            {user && canAccessWorkspace('recruiter').allowed && (
+              <button
+                onClick={() => setActiveTab('recruiter')}
+                className={`px-3 py-2 rounded-xl transition-all cursor-pointer ${
+                  activeTab === 'recruiter'
+                    ? 'bg-[#ECF3E9] text-[#283618] font-bold'
+                    : 'hover:text-[#283618] hover:bg-[#F9F8F6]'
+                }`}
+              >
+                Recruiter Studio
+              </button>
+            )}
+            {user && canAccessWorkspace('candidate').allowed && (
+              <button
+                onClick={() => setActiveTab('candidate')}
+                className={`px-3 py-2 rounded-xl transition-all flex items-center gap-1 cursor-pointer ${
+                  activeTab === 'candidate'
+                    ? 'bg-[#ECF3E9] text-[#283618] font-bold'
+                    : 'hover:text-[#283618] hover:bg-[#F9F8F6]'
+                }`}
+              >
+                <span>Candidate Portal</span>
+              </button>
+            )}
+            {user && (
+              <button
+                onClick={() => setActiveTab('ai-studio')}
+                className={`px-3 py-2 rounded-xl transition-all flex items-center gap-1 text-[#BC6C25] font-semibold cursor-pointer ${
+                  activeTab === 'ai-studio'
+                    ? 'bg-[#FEFAE0] border border-[#E8E4D9]'
+                    : 'hover:bg-[#FEFAE0]/50'
+                }`}
+              >
+                <span>✨ AI Copilot</span>
+              </button>
+            )}
+            {user && canAccessWorkspace('billing').allowed && (
+              <button
+                onClick={() => setActiveTab('billing')}
+                className={`px-3 py-2 rounded-xl transition-all flex items-center gap-1 cursor-pointer ${
+                  activeTab === 'billing'
+                    ? 'bg-[#ECF3E9] text-[#283618] font-bold'
+                    : 'hover:text-[#283618] hover:bg-[#F9F8F6]'
+                }`}
+              >
+                <span>Subscriptions</span>
+              </button>
+            )}
+            {user && (
+              <button
+                onClick={() => setActiveTab('messages')}
+                className={`px-3 py-2 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
+                  activeTab === 'messages'
+                    ? 'bg-[#ECF3E9] text-[#283618] font-bold'
+                    : 'hover:text-[#283618] hover:bg-[#F9F8F6]'
+                }`}
+              >
+                <MessageSquare className="w-4 h-4 text-[#4F772D]" />
+                <span>Messages</span>
+              </button>
+            )}
+            {user && canAccessWorkspace('admin').allowed && (
+              <button
+                onClick={() => setActiveTab('admin')}
+                className={`px-3 py-2 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
+                  activeTab === 'admin'
+                    ? 'bg-[#283618] text-white font-bold'
+                    : 'bg-red-50 text-red-800 hover:bg-red-100'
+                }`}
+              >
+                <ShieldCheck className="w-4 h-4 text-red-600" />
+                <span>Trust & Safety</span>
+              </button>
+            )}
           </div>
         </div>
 
         {/* Action Controls & Multi-Role Context */}
         <div className="flex items-center gap-2 sm:gap-3">
+          {/* Organization Multi-Tenant Switcher */}
+          {user && (
+            <OrganizationSwitcher onOpenCreateWizard={() => setIsOrgWizardOpen(true)} />
+          )}
+
           {/* Desktop PWA Install Button */}
           <PWAInstallButton className="hidden md:inline-flex py-1.5 px-3 text-xs" />
 
@@ -311,253 +342,221 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
           </div>
 
-          {/* Role Authorization Switcher (All 8 Roles) */}
-          <div className="relative">
-            <button
-              onClick={() => setShowRoleDropdown(!showRoleDropdown)}
-              className="flex items-center gap-1.5 px-3 py-2 bg-[#F9F8F6] border border-[#E8E4D9] rounded-xl text-xs text-[#283618] hover:border-[#283618] transition-all cursor-pointer"
-              title="Switch Simulated Role Context"
-            >
-              <SlidersHorizontal className="w-3.5 h-3.5 text-[#606C38]" />
-              <span className="hidden md:inline font-bold">
-                {roleLabels[currentRole]?.badge || 'Role'}
-              </span>
-              <ChevronDown className="w-3 h-3 text-[#606C38]" />
-            </button>
-
-            {showRoleDropdown && (
-              <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl border border-[#E8E4D9] shadow-2xl p-2.5 z-50">
-                <div className="px-3 py-2 border-b border-[#E8E4D9] flex items-center justify-between">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-[#606C38]">
-                    Role Selection (Sell, Recruiter, Buyer, Admin, Rest)
-                  </span>
-                  <span className="text-[10px] text-[#BC6C25] font-semibold">Gateway</span>
-                </div>
-                <div className="py-1.5 space-y-3 max-h-80 overflow-y-auto">
-                  {/* 1. SELL */}
-                  <div className="space-y-1">
-                    <span className="px-3 text-[10px] font-bold uppercase tracking-wider text-[#BC6C25]">Sell</span>
-                    {(['business_seller'] as UserRole[]).map((r) => {
-                      const info = roleLabels[r];
-                      const isSelected = currentRole === r;
-                      return (
-                        <button
-                          key={r}
-                          onClick={() => handleRoleSelect(r)}
-                          className={`w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between transition-colors cursor-pointer ${
-                            isSelected ? 'bg-[#ECF3E9] text-[#283618] font-bold border border-[#4F772D]/20' : 'hover:bg-[#F9F8F6] text-[#283618]'
-                          }`}
-                        >
-                          <div>
-                            <div className="font-bold">{info.title}</div>
-                            <div className="text-[10px] text-[#606C38]">{info.entity} • {info.badge}</div>
-                          </div>
-                          {isSelected && <Check className="w-4 h-4 text-[#4F772D] shrink-0" />}
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {/* 2. RECRUITER */}
-                  <div className="space-y-1">
-                    <span className="px-3 text-[10px] font-bold uppercase tracking-wider text-[#4F772D]">Recruiter</span>
-                    {(['recruiter', 'employer'] as UserRole[]).map((r) => {
-                      const info = roleLabels[r];
-                      const isSelected = currentRole === r;
-                      return (
-                        <button
-                          key={r}
-                          onClick={() => handleRoleSelect(r)}
-                          className={`w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between transition-colors cursor-pointer ${
-                            isSelected ? 'bg-[#ECF3E9] text-[#283618] font-bold border border-[#4F772D]/20' : 'hover:bg-[#F9F8F6] text-[#283618]'
-                          }`}
-                        >
-                          <div>
-                            <div className="font-bold">{info.title}</div>
-                            <div className="text-[10px] text-[#606C38]">{info.entity} • {info.badge}</div>
-                          </div>
-                          {isSelected && <Check className="w-4 h-4 text-[#4F772D] shrink-0" />}
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {/* 3. BUYER */}
-                  <div className="space-y-1">
-                    <span className="px-3 text-[10px] font-bold uppercase tracking-wider text-[#9A551A]">Buyer</span>
-                    {(['buyer', 'investor_buyer'] as UserRole[]).map((r) => {
-                      const info = roleLabels[r];
-                      const isSelected = currentRole === r;
-                      return (
-                        <button
-                          key={r}
-                          onClick={() => handleRoleSelect(r)}
-                          className={`w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between transition-colors cursor-pointer ${
-                            isSelected ? 'bg-[#ECF3E9] text-[#283618] font-bold border border-[#4F772D]/20' : 'hover:bg-[#F9F8F6] text-[#283618]'
-                          }`}
-                        >
-                          <div>
-                            <div className="font-bold">{info.title}</div>
-                            <div className="text-[10px] text-[#606C38]">{info.entity} • {info.badge}</div>
-                          </div>
-                          {isSelected && <Check className="w-4 h-4 text-[#4F772D] shrink-0" />}
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {/* 4. PLATFORM ADMINISTRATOR */}
-                  <div className="space-y-1">
-                    <span className="px-3 text-[10px] font-bold uppercase tracking-wider text-[#132A13]">Platform Administrator</span>
-                    {(['platform_admin'] as UserRole[]).map((r) => {
-                      const info = roleLabels[r];
-                      const isSelected = currentRole === r;
-                      return (
-                        <button
-                          key={r}
-                          onClick={() => handleRoleSelect(r)}
-                          className={`w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between transition-colors cursor-pointer ${
-                            isSelected ? 'bg-[#ECF3E9] text-[#283618] font-bold border border-[#4F772D]/20' : 'hover:bg-[#F9F8F6] text-[#283618]'
-                          }`}
-                        >
-                          <div>
-                            <div className="font-bold">{info.title}</div>
-                            <div className="text-[10px] text-[#606C38]">{info.entity} • {info.badge}</div>
-                          </div>
-                          {isSelected && <Check className="w-4 h-4 text-[#4F772D] shrink-0" />}
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {/* 5. REST */}
-                  <div className="space-y-1">
-                    <span className="px-3 text-[10px] font-bold uppercase tracking-wider text-stone-500">Rest (Talent & Services)</span>
-                    {(['job_seeker', 'service_provider', 'organization_admin', 'verification_officer'] as UserRole[]).map((r) => {
-                      const info = roleLabels[r];
-                      const isSelected = currentRole === r;
-                      return (
-                        <button
-                          key={r}
-                          onClick={() => handleRoleSelect(r)}
-                          className={`w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between transition-colors cursor-pointer ${
-                            isSelected ? 'bg-[#ECF3E9] text-[#283618] font-bold border border-[#4F772D]/20' : 'hover:bg-[#F9F8F6] text-[#283618]'
-                          }`}
-                        >
-                          <div>
-                            <div className="font-bold">{info.title}</div>
-                            <div className="text-[10px] text-[#606C38]">{info.entity} • {info.badge}</div>
-                          </div>
-                          {isSelected && <Check className="w-4 h-4 text-[#4F772D] shrink-0" />}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
           {/* User Profile / Account Menu */}
-          <div className="relative">
-            <button
-              onClick={() => setShowUserDropdown(!showUserDropdown)}
-              className="flex items-center gap-2 pl-2 pr-2.5 py-1.5 bg-white border border-[#E8E4D9] rounded-xl hover:border-[#283618] transition-all cursor-pointer"
-            >
-              <div className="w-7 h-7 rounded-lg bg-[#283618] text-white flex items-center justify-center font-bold text-xs shadow-xs">
-                {userInitials}
-              </div>
-              <div className="hidden xl:block text-left">
-                <div className="text-xs font-bold text-[#132A13] leading-tight truncate max-w-[120px]">
-                  {user.fullName}
+          {user ? (
+            <div className="relative">
+              <button
+                onClick={() => setShowUserDropdown(!showUserDropdown)}
+                className="flex items-center gap-2 pl-2 pr-2.5 py-1.5 bg-white border border-[#E8E4D9] rounded-xl hover:border-[#283618] transition-all cursor-pointer"
+                id="user-profile-menu-button"
+              >
+                <div className="w-7 h-7 rounded-lg bg-[#283618] text-white flex items-center justify-center font-bold text-xs shadow-xs">
+                  {userInitials}
                 </div>
-                <div className="text-[10px] text-[#606C38] leading-tight capitalize">
-                  {activeOrganization ? activeOrganization.name : user.primaryRole?.replace('_', ' ')}
-                </div>
-              </div>
-              <ChevronDown className="w-3 h-3 text-[#606C38]" />
-            </button>
-
-            {showUserDropdown && (
-              <div className="absolute right-0 mt-2 w-64 bg-white rounded-2xl border border-[#E8E4D9] shadow-2xl p-2 z-50">
-                <div className="px-3 py-2.5 border-b border-[#E8E4D9]">
-                  <div className="font-bold text-xs text-[#132A13]">{user.fullName}</div>
-                  <div className="text-[11px] text-[#606C38] truncate">{user.email}</div>
-                  <div className="mt-1.5 flex items-center gap-1.5">
-                    <span className="text-[10px] font-bold uppercase bg-[#ECF3E9] text-[#283618] px-2 py-0.5 rounded-full">
-                      {user.accountStatus?.replace('_', ' ')}
-                    </span>
-                    {user.isEmailVerified && (
-                      <span className="text-[10px] font-bold text-[#4F772D] flex items-center gap-0.5">
-                        <Check className="w-3 h-3" /> Verified
-                      </span>
-                    )}
+                <div className="hidden xl:block text-left">
+                  <div className="text-xs font-bold text-[#132A13] leading-tight truncate max-w-[120px]">
+                    {user.fullName}
+                  </div>
+                  <div className="text-[10px] text-[#606C38] leading-tight capitalize">
+                    {activeOrganization ? activeOrganization.name : user.primaryRole?.replace('_', ' ')}
                   </div>
                 </div>
+                <ChevronDown className="w-3 h-3 text-[#606C38]" />
+              </button>
 
-                <div className="py-1 text-xs">
-                  <button
-                    onClick={() => {
-                      setIsProfileModalOpen(true);
-                      setShowUserDropdown(false);
-                    }}
-                    className="w-full text-left px-3 py-2 rounded-xl hover:bg-[#F9F8F6] text-[#283618] flex items-center gap-2 cursor-pointer font-medium"
-                  >
-                    <UserIcon className="w-3.5 h-3.5 text-[#606C38]" />
-                    Account & Profile
-                  </button>
+              {showUserDropdown && (
+                <div className="absolute right-0 mt-2 w-64 bg-white rounded-2xl border border-[#E8E4D9] shadow-2xl p-2 z-50 animate-fade-in" id="user-profile-dropdown">
+                  <div className="px-3 py-2.5 border-b border-[#E8E4D9]">
+                    <div className="font-bold text-xs text-[#132A13]">{user.fullName}</div>
+                    <div className="text-[11px] text-[#606C38] truncate">{user.email}</div>
+                    <div className="mt-1.5 flex items-center gap-1.5">
+                      <span className="text-[10px] font-bold uppercase bg-[#ECF3E9] text-[#283618] px-2 py-0.5 rounded-full">
+                        {user.accountStatus?.replace('_', ' ')}
+                      </span>
+                      {user.isEmailVerified && (
+                        <span className="text-[10px] font-bold text-[#4F772D] flex items-center gap-0.5">
+                          <Check className="w-3 h-3" /> Verified
+                        </span>
+                      )}
+                    </div>
+                  </div>
 
-                  <button
-                    onClick={() => {
-                      setActiveTab('billing');
-                      setShowUserDropdown(false);
-                    }}
-                    className="w-full text-left px-3 py-2 rounded-xl hover:bg-[#F9F8F6] text-[#283618] flex items-center gap-2 cursor-pointer font-medium"
-                  >
-                    <CreditCard className="w-3.5 h-3.5 text-[#606C38]" />
-                    Subscriptions & Billing
-                  </button>
+                  <div className="py-1 text-xs">
+                    <button
+                      onClick={() => {
+                        setIsProfileModalOpen(true);
+                        setShowUserDropdown(false);
+                      }}
+                      className="w-full text-left px-3 py-2 rounded-xl hover:bg-[#F9F8F6] text-[#283618] flex items-center gap-2 cursor-pointer font-medium"
+                      id="profile-menu-item"
+                    >
+                      <UserIcon className="w-3.5 h-3.5 text-[#606C38]" />
+                      Profile
+                    </button>
 
-                  <button
-                    onClick={() => {
-                      openAuthModal('login');
-                      setShowUserDropdown(false);
-                    }}
-                    className="w-full text-left px-3 py-2 rounded-xl hover:bg-[#F9F8F6] text-[#283618] flex items-center gap-2 cursor-pointer font-medium"
-                  >
-                    <Lock className="w-3.5 h-3.5 text-[#606C38]" />
-                    Sign In to Other Account
-                  </button>
+                    <button
+                      onClick={() => {
+                        setActiveTab('candidate');
+                        setShowUserDropdown(false);
+                      }}
+                      className="w-full text-left px-3 py-2 rounded-xl hover:bg-[#F9F8F6] text-[#283618] flex items-center gap-2 cursor-pointer font-medium"
+                      id="activity-menu-item"
+                    >
+                      <Activity className="w-3.5 h-3.5 text-[#606C38]" />
+                      My Activity
+                    </button>
+                    
+                    <button
+                      onClick={() => {
+                        setActiveTab('candidate');
+                        setShowUserDropdown(false);
+                      }}
+                      className="w-full text-left px-3 py-2 rounded-xl hover:bg-[#F9F8F6] text-[#283618] flex items-center gap-2 cursor-pointer font-medium"
+                      id="applications-menu-item"
+                    >
+                      <FileText className="w-3.5 h-3.5 text-[#606C38]" />
+                      Applications
+                    </button>
+                    
+                    <button
+                      onClick={() => {
+                        setActiveTab('opportunities');
+                        setShowUserDropdown(false);
+                      }}
+                      className="w-full text-left px-3 py-2 rounded-xl hover:bg-[#F9F8F6] text-[#283618] flex items-center gap-2 cursor-pointer font-medium"
+                      id="saved-menu-item"
+                    >
+                      <Bookmark className="w-3.5 h-3.5 text-[#606C38]" />
+                      Saved Opportunities
+                    </button>
+                    
+                    <button
+                      onClick={() => {
+                        setActiveTab('messages');
+                        setShowUserDropdown(false);
+                      }}
+                      className="w-full text-left px-3 py-2 rounded-xl hover:bg-[#F9F8F6] text-[#283618] flex items-center gap-2 cursor-pointer font-medium flex justify-between"
+                      id="messages-menu-item"
+                    >
+                      <div className="flex items-center gap-2">
+                        <MessageSquare className="w-3.5 h-3.5 text-[#606C38]" />
+                        Messages
+                      </div>
+                    </button>
+                    
+                    <button
+                      onClick={() => {
+                        setShowNotificationsModal(true);
+                        setShowUserDropdown(false);
+                      }}
+                      className="w-full text-left px-3 py-2 rounded-xl hover:bg-[#F9F8F6] text-[#283618] flex items-center gap-2 cursor-pointer font-medium flex justify-between"
+                      id="notifications-menu-item"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Bell className="w-3.5 h-3.5 text-[#606C38]" />
+                        Notifications
+                      </div>
+                      {unreadNotifCount > 0 && (
+                        <span className="bg-[#BC6C25] text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full">
+                          {unreadNotifCount}
+                        </span>
+                      )}
+                    </button>
 
-                  <button
-                    onClick={() => {
-                      logout();
-                      setShowUserDropdown(false);
-                    }}
-                    className="w-full text-left px-3 py-2 rounded-xl hover:bg-[#FCF0E8] text-[#BC6C25] flex items-center gap-2 cursor-pointer font-medium"
-                  >
-                    <LogOut className="w-3.5 h-3.5" />
-                    Sign Out
-                  </button>
+                    <div className="my-1 border-t border-[#E8E4D9]"></div>
+
+                    <button
+                      onClick={() => {
+                        setIsProfileModalOpen(true);
+                        setShowUserDropdown(false);
+                      }}
+                      className="w-full text-left px-3 py-2 rounded-xl hover:bg-[#F9F8F6] text-[#283618] flex items-center gap-2 cursor-pointer font-medium"
+                      id="security-menu-item"
+                    >
+                      <ShieldCheck className="w-3.5 h-3.5 text-[#606C38]" />
+                      Security
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setIsProfileModalOpen(true);
+                        setShowUserDropdown(false);
+                      }}
+                      className="w-full text-left px-3 py-2 rounded-xl hover:bg-[#F9F8F6] text-[#283618] flex items-center gap-2 cursor-pointer font-medium"
+                      id="settings-menu-item"
+                    >
+                      <Settings className="w-3.5 h-3.5 text-[#606C38]" />
+                      Settings
+                    </button>
+
+                    <div className="my-1 border-t border-[#E8E4D9]"></div>
+
+                    <button
+                      onClick={() => {
+                        logout();
+                        setShowUserDropdown(false);
+                      }}
+                      className="w-full text-left px-3 py-2 rounded-xl hover:bg-[#FCF0E8] text-[#BC6C25] flex items-center gap-2 cursor-pointer font-medium"
+                      id="signout-menu-item"
+                    >
+                      <LogOut className="w-3.5 h-3.5" />
+                      Sign Out
+                    </button>
+                  </div>
                 </div>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 animate-fade-in" id="guest-auth-controls">
+              <button
+                onClick={() => openAuthModal('login')}
+                className="px-4 py-2 border border-[#E8E4D9] text-[#283618] hover:border-[#283618] transition-all text-xs sm:text-sm font-semibold rounded-xl cursor-pointer bg-white hover:bg-[#F9F8F6]"
+                id="navbar-signin-button"
+              >
+                Sign In
+              </button>
+              <button
+                onClick={() => openAuthModal('register')}
+                className="px-4 py-2 bg-[#283618] hover:bg-[#132A13] text-white transition-all text-xs sm:text-sm font-semibold rounded-xl shadow-xs cursor-pointer"
+                id="navbar-register-button"
+              >
+                Create Account
+              </button>
+            </div>
+          )}
 
           {/* Post Opportunity CTA */}
-          <button
-            onClick={onOpenPostModal}
-            className="flex items-center gap-1.5 px-3.5 sm:px-5 py-2 sm:py-2.5 bg-[#283618] hover:bg-[#132A13] text-white rounded-xl text-xs sm:text-sm font-semibold shadow-xs transition-transform active:scale-95 cursor-pointer"
-          >
-            <Plus className="w-4 h-4" />
-            <span className="hidden sm:inline">Post Opportunity</span>
-            <span className="sm:hidden">Post</span>
-          </button>
+          {user && (
+            <button
+              onClick={onOpenPostModal}
+              className="flex items-center gap-1.5 px-3.5 sm:px-5 py-2 sm:py-2.5 bg-[#283618] hover:bg-[#132A13] text-white rounded-xl text-xs sm:text-sm font-semibold shadow-xs transition-transform active:scale-95 cursor-pointer"
+              id="post-opportunity-button"
+            >
+              <Plus className="w-4 h-4" />
+              <span className="hidden sm:inline">Post Opportunity</span>
+              <span className="sm:hidden">Post</span>
+            </button>
+          )}
         </div>
       </nav>
 
       {/* User Profile Modal */}
-      <UserProfileModal isOpen={isProfileModalOpen} onClose={() => setIsProfileModalOpen(false)} />
+      {user && (
+        <UserProfileModal isOpen={isProfileModalOpen} onClose={() => setIsProfileModalOpen(false)} />
+      )}
+
+      {/* Organization Creation & Onboarding Wizard */}
+      <OrganizationWizardModal
+        isOpen={isOrgWizardOpen}
+        onClose={() => setIsOrgWizardOpen(false)}
+      />
+
+      {/* Organization Team & Access Management Modal */}
+      <OrganizationTeamModal
+        isOpen={isOrgTeamModalOpen}
+        onClose={() => setIsOrgTeamModalOpen(false)}
+        organization={activeOrganization}
+      />
 
       {/* Notification Center Modal */}
       <NotificationCenterModal

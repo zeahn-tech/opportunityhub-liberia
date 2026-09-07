@@ -5,6 +5,7 @@ import { INITIAL_ORGANIZATIONS, LIBERIAN_COUNTIES } from '../data/seedData';
 import { OPPORTUNITY_TYPES } from '../config/constants';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { db } from '../db/dbClient';
 
 interface PostOpportunityModalProps {
   isOpen: boolean;
@@ -23,11 +24,11 @@ export const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({
 }) => {
   if (!isOpen) return null;
 
-  const { session, activeRole } = useAuth();
+  const { session, user, activeRole, userOrganizations, activeOrganization } = useAuth();
   const { showToast } = useToast();
 
-  const isPlatformAdmin = activeRole === 'platform_admin' || session?.user?.systemRole === 'platform_admin';
-  const defaultOrgId = session?.activeOrganization?.id || INITIAL_ORGANIZATIONS[0].id;
+  const isPlatformAdmin = activeRole === 'platform_admin' || session?.user?.systemRole === 'platform_admin' || user?.systemRole === 'platform_admin';
+  const defaultOrgId = activeOrganization?.id || (userOrganizations.length > 0 ? userOrganizations[0].id : (INITIAL_ORGANIZATIONS[0]?.id || ''));
 
   const [title, setTitle] = useState('');
   const [selectedOrgId, setSelectedOrgId] = useState(defaultOrgId);
@@ -92,9 +93,9 @@ export const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({
       if (opportunityToEdit.skills) setSkills(opportunityToEdit.skills);
       if (opportunityToEdit.screeningQuestions) setScreeningQuestions(opportunityToEdit.screeningQuestions);
     } else {
-      setSelectedOrgId(session?.activeOrganization?.id || INITIAL_ORGANIZATIONS[0].id);
+      setSelectedOrgId(activeOrganization?.id || (userOrganizations.length > 0 ? userOrganizations[0].id : (INITIAL_ORGANIZATIONS[0]?.id || '')));
     }
-  }, [opportunityToEdit, session]);
+  }, [opportunityToEdit, session, activeOrganization, userOrganizations]);
 
   const handleAddResp = () => {
     if (!respInput.trim()) return;
@@ -134,10 +135,10 @@ export const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({
 
     try {
       setIsSubmitting(true);
-      const org: Organization = INITIAL_ORGANIZATIONS.find((o) => o.id === selectedOrgId) || {
+      const org: Organization = db.getOrganizationById(selectedOrgId) || INITIAL_ORGANIZATIONS.find((o) => o.id === selectedOrgId) || {
         id: selectedOrgId,
         slug: selectedOrgId,
-        name: session?.activeOrganization?.name || 'Authorized Entity',
+        name: activeOrganization?.name || 'Authorized Entity',
         logoText: 'AE',
         description: 'Authorized registered enterprise.',
         type: 'private_company',
@@ -212,7 +213,7 @@ export const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({
 
         {/* Form Body */}
         <div className="p-6 overflow-y-auto flex-1 space-y-5 text-xs sm:text-sm">
-          {/* Organization Selection (Admins only, else locked to active tenant) */}
+          {/* Organization Selection (Admins only, or multi-org member, else locked to active tenant) */}
           <div>
             <label className="block text-xs font-semibold text-[#283618] mb-1">Authorizing Organization *</label>
             {isPlatformAdmin ? (
@@ -221,15 +222,27 @@ export const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({
                 onChange={(e) => setSelectedOrgId(e.target.value)}
                 className="w-full p-3 bg-[#F9F8F4] rounded-xl border border-[#E8E4D9] outline-none text-[#283618] font-medium"
               >
-                {INITIAL_ORGANIZATIONS.map((o) => (
+                {db.getOrganizations().map((o) => (
                   <option key={o.id} value={o.id}>
-                    {o.name} ({o.type?.replace('_', ' ')})
+                    {o.name} ({o.type?.replace('_', ' ')}) {o.isVerified ? '✓ Verified' : ''}
+                  </option>
+                ))}
+              </select>
+            ) : userOrganizations.length > 1 ? (
+              <select
+                value={selectedOrgId}
+                onChange={(e) => setSelectedOrgId(e.target.value)}
+                className="w-full p-3 bg-[#F9F8F4] rounded-xl border border-[#E8E4D9] outline-none text-[#283618] font-medium"
+              >
+                {userOrganizations.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.name} ({o.membership?.orgRole || 'Member'})
                   </option>
                 ))}
               </select>
             ) : (
               <div className="p-3 bg-[#F9F8F4] rounded-xl border border-[#E8E4D9] text-[#283618] font-semibold flex items-center justify-between">
-                <span>{session?.activeOrganization?.name || 'Your Authorized Organization'}</span>
+                <span>{activeOrganization?.name || (userOrganizations[0]?.name) || 'Your Authorized Organization'}</span>
                 <span className="text-[11px] text-[#606C38] font-normal">Tenant Bound</span>
               </div>
             )}

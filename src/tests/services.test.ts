@@ -8,7 +8,7 @@ import { db } from '../db/dbClient';
 describe('Domain Services Architecture', () => {
   beforeEach(() => {
     db.resetToSeedDefaults();
-    authService.switchRole('job_seeker');
+    authService.loginAsRoleForTest('job_seeker');
   });
 
   it('filters opportunities by county and type via opportunityService', async () => {
@@ -42,7 +42,7 @@ describe('Domain Services Architecture', () => {
   });
 
   it('updates application recruitment stage when authorized', async () => {
-    authService.switchRole('employer');
+    authService.loginAsRoleForTest('employer');
     const opps = db.getOpportunities();
     const opp = opps[0];
 
@@ -62,7 +62,7 @@ describe('Domain Services Architecture', () => {
   });
 
   it('allows investor/buyer to request NDA access to confidential businesses', async () => {
-    authService.switchRole('investor_buyer');
+    authService.loginAsRoleForTest('investor_buyer');
     const businesses = db.getBusinesses();
     const confidentialBiz = businesses.find((b) => b.isConfidential);
     expect(confidentialBiz).toBeDefined();

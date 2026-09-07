@@ -12,7 +12,7 @@ describe('Candidate Profile & Application Management System Tests', () => {
 
   describe('1. Candidate Profile Management & Persistence', () => {
     it('allows a job seeker to retrieve and update their full professional profile', async () => {
-      authService.switchRole('job_seeker');
+      authService.loginAsRoleForTest('job_seeker');
       const session = authService.getSession();
       const userId = session.user.id;
 
@@ -91,7 +91,7 @@ describe('Candidate Profile & Application Management System Tests', () => {
     });
 
     it('enforces privacy settings when an unauthorized viewer accesses a candidate profile', async () => {
-      authService.switchRole('job_seeker');
+      authService.loginAsRoleForTest('job_seeker');
       const session = authService.getSession();
       const candidateUserId = session.user.id;
 
@@ -103,7 +103,7 @@ describe('Candidate Profile & Application Management System Tests', () => {
       });
 
       // Switch to an unrelated employer with no active applications
-      authService.switchRole('business_seller');
+      authService.loginAsRoleForTest('business_seller');
 
       const maskedRes = await candidateService.getPublicProfile(candidateUserId);
       expect(maskedRes.status).toBe(200);
@@ -116,12 +116,12 @@ describe('Candidate Profile & Application Management System Tests', () => {
       }
 
       // 2. Set profileVisibility to hidden
-      authService.switchRole('job_seeker');
+      authService.loginAsRoleForTest('job_seeker');
       await candidateService.updatePrivacySettings({
         profileVisibility: 'hidden'
       });
 
-      authService.switchRole('business_seller');
+      authService.loginAsRoleForTest('business_seller');
       const hiddenRes = await candidateService.getPublicProfile(candidateUserId);
       expect(hiddenRes.status).toBe(200);
       expect(hiddenRes.data).toBeNull();
@@ -130,7 +130,7 @@ describe('Candidate Profile & Application Management System Tests', () => {
 
   describe('2. Application Submission & Candidate Portal', () => {
     it('allows candidate to apply for a published vacancy with screening questions and cover note', async () => {
-      authService.switchRole('job_seeker');
+      authService.loginAsRoleForTest('job_seeker');
       const session = authService.getSession();
 
       const applyRes = await applicationService.submit({
@@ -166,7 +166,7 @@ describe('Candidate Profile & Application Management System Tests', () => {
     });
 
     it('allows candidate to withdraw an active application with an audit record', async () => {
-      authService.switchRole('job_seeker');
+      authService.loginAsRoleForTest('job_seeker');
       const session = authService.getSession();
 
       // Submit an application
@@ -194,7 +194,7 @@ describe('Candidate Profile & Application Management System Tests', () => {
   describe('3. Recruiter Pipeline & Candidate Lifecycle Management', () => {
     it('allows employer to transition candidate through entire hiring pipeline', async () => {
       // Create fresh application as candidate
-      authService.switchRole('job_seeker');
+      authService.loginAsRoleForTest('job_seeker');
       const candidateUser = authService.getSession().user;
 
       const appRes = await applicationService.submit({
@@ -212,7 +212,7 @@ describe('Candidate Profile & Application Management System Tests', () => {
       const appId = appRes.data!.id;
 
       // Switch to Employer
-      authService.switchRole('employer');
+      authService.loginAsRoleForTest('employer');
 
       // 1. Advance to Shortlisted
       const shortlistRes = await applicationService.updateStage(appId, 'shortlisted', {
@@ -266,7 +266,7 @@ describe('Candidate Profile & Application Management System Tests', () => {
     });
 
     it('allows recruiter to reject an applicant with transparent reason', async () => {
-      authService.switchRole('job_seeker');
+      authService.loginAsRoleForTest('job_seeker');
       const applyRes = await applicationService.submit({
         opportunityId: 'opp-1',
         opportunityTitle: 'Senior Logistics & Supply Chain Manager',
@@ -278,7 +278,7 @@ describe('Candidate Profile & Application Management System Tests', () => {
       const appId = applyRes.data!.id;
 
       // Switch to employer
-      authService.switchRole('employer');
+      authService.loginAsRoleForTest('employer');
 
       const rejectRes = await applicationService.updateStage(appId, 'rejected', {
         rejectionReason: 'Position closed due to budget realignment.'
@@ -290,7 +290,7 @@ describe('Candidate Profile & Application Management System Tests', () => {
     });
 
     it('allows recruiter to score and save candidate evaluations', async () => {
-      authService.switchRole('employer');
+      authService.loginAsRoleForTest('employer');
       const apps = db.getApplications();
       const testApp = apps[0];
 

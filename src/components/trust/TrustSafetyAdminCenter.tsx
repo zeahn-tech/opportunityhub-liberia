@@ -49,7 +49,8 @@ import {
   County,
   OpportunityType,
   SystemRole,
-  AccountStatus
+  AccountStatus,
+  VerificationEvidenceDocument
 } from '../../types';
 import { db } from '../../db/dbClient';
 import { trustSafetyService } from '../../services/trustSafetyService';
@@ -94,7 +95,7 @@ export const TrustSafetyAdminCenter: React.FC<{ currentUserId?: string }> = () =
   const handleDemoAdminLogin = async () => {
     setIsLoggingInDemo(true);
     try {
-      await login('admin@opportunityhub.lr', 'password');
+      await login('info.tracenetlib@gmail.com', 'Champion0041900419');
       showToast('Successfully logged in as Platform Administrator', 'success');
     } catch (err) {
       showToast('Failed to bypass login. Register a platform_admin account.', 'error');
@@ -321,7 +322,7 @@ export const TrustSafetyAdminCenter: React.FC<{ currentUserId?: string }> = () =
       await trustSafetyService.reviewVerificationRequest(
         reqId,
         decision,
-        user?.id || 'user-admin-1',
+        user?.id || 'admin',
         'Approved after reviewing statutory business registry files',
         decision === 'rejected' ? 'Provided tax clearance papers do not match official entities' : ''
       );
@@ -343,7 +344,7 @@ export const TrustSafetyAdminCenter: React.FC<{ currentUserId?: string }> = () =
   // 6. Report Resolution Actioning
   const handleReportAction = async (reportId: string, action: 'warning_issued' | 'listing_quarantined' | 'account_restricted' | 'account_suspended' | 'dismissed') => {
     try {
-      await trustSafetyService.resolveReport(reportId, action, user?.id || 'user-admin-1', 'Scam Desk resolution review completed.');
+      await trustSafetyService.resolveReport(reportId, action, user?.id || 'admin', 'Scam Desk resolution review completed.');
       db.emitAuditLog({
         actorUserId: user?.id || 'admin',
         actorName: user?.fullName || 'Platform Admin',

@@ -44,6 +44,7 @@ import { RouterProvider, useRouter } from './routes/router';
 import { ErrorBoundary } from './core/errors/ErrorBoundary';
 import { OfflineBanner } from './pwa/OfflineBanner';
 import { AuthModal } from './components/auth/AuthModal';
+import { OnboardingModal } from './components/auth/OnboardingModal';
 import { OpportunityCardSkeleton } from './design-system/Skeleton';
 import { db } from './db/dbClient';
 import { opportunityService } from './services/opportunityService';
@@ -357,7 +358,7 @@ function AppContent() {
       />
 
       {/* Account Verification Prompt if pending */}
-      {!user.isEmailVerified && (
+      {user && !user.isEmailVerified && (
         <div className="bg-[#FEFAE0] border-b border-[#E8E4D9] px-4 py-2.5 text-xs text-[#283618] flex items-center justify-between">
           <div className="flex items-center gap-2 max-w-4xl mx-auto w-full">
             <AlertCircle className="w-4 h-4 text-[#BC6C25] shrink-0" />
@@ -606,7 +607,7 @@ function AppContent() {
 
         {/* Tab 9: Trust & Safety Officer Command Center */}
         {activeTab === 'admin' && (
-          <TrustSafetyAdminCenter currentUserId={user?.id || 'user-admin-1'} />
+          <TrustSafetyAdminCenter currentUserId={user?.id} />
         )}
       </main>
 
@@ -636,6 +637,7 @@ function AppContent() {
       />
 
       <AuthModal />
+      <OnboardingModal />
 
       {/* Mobile Sticky Bottom Navigation */}
       <MobileBottomNav activeTab={activeTab} setActiveTab={handleTabChange} />

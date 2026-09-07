@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
+import { validateUploadedFile } from '../../core/security/fileValidator';
 import {
   MessageSquare,
   Send,
@@ -133,13 +134,19 @@ export const MessagingCenter: React.FC<MessagingCenterProps> = ({ initialConvers
     if (!files || files.length === 0) return;
 
     Array.from(files).forEach((file) => {
+      const category = file.type.startsWith('image/') ? 'image' : 'document';
+      const validation = validateUploadedFile(file, category);
+      if (!validation.valid) {
+        alert(validation.error || 'Attachment validation failed.');
+        return;
+      }
       const reader = new FileReader();
       reader.onload = (evt) => {
         if (evt.target?.result) {
           const newAtt: MessageAttachment = {
             id: `att-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
-            fileName: file.name,
-            fileType: file.type,
+            fileName: validation.cleanFileName,
+            fileType: validation.fileType,
             fileSize: file.size,
             urlOrBase64: evt.target.result as string
           };

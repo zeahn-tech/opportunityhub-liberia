@@ -151,7 +151,7 @@ OpportunityHub Liberia is a high-integrity digital opportunity and business exch
 
 ## 3. Automated Test Suite & Quality Assurance
 
-### Vitest Test Suite Overview (67 Passing Tests across 9 Test Suites)
+### Vitest Test Suite Overview (82 Passing Tests across 10 Test Suites)
 1. `candidateAndApplication.test.ts` (7 tests):
    - Comprehensive candidate profile retrieval, update, and persistence.
    - Privacy masking and hidden profile enforcement for unauthorized viewers.

@@ -43,7 +43,8 @@ import {
   AlertTriangle,
   Clock,
   UserCheck,
-  ShieldCheck
+  ShieldCheck,
+  Lock
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { applicationService } from '../services/applicationService';
@@ -67,14 +68,14 @@ export const OpportunityDetailModal: React.FC<OpportunityDetailModalProps> = ({
 }) => {
   if (!opportunity) return null;
 
-  const { session, activeRole, user } = useAuth();
+  const { session, activeRole, user, openAuthModal } = useAuth();
   const { showToast } = useToast();
 
   const [isApplying, setIsApplying] = useState(false);
   const [candidateProfile, setCandidateProfile] = useState<CandidateProfile | null>(null);
-  const [applicantName, setApplicantName] = useState(user.fullName || '');
-  const [applicantEmail, setApplicantEmail] = useState(user.email || '');
-  const [applicantPhone, setApplicantPhone] = useState(user.phoneNumber || '');
+  const [applicantName, setApplicantName] = useState(user?.fullName || '');
+  const [applicantEmail, setApplicantEmail] = useState(user?.email || '');
+  const [applicantPhone, setApplicantPhone] = useState(user?.phoneNumber || '');
   const [coverNote, setCoverNote] = useState('');
   const [screeningAnswers, setScreeningAnswers] = useState<Record<number, string>>({});
   const [isSubmitted, setIsSubmitted] = useState(false);
@@ -336,8 +337,39 @@ export const OpportunityDetailModal: React.FC<OpportunityDetailModalProps> = ({
             </div>
           )}
 
+          {/* Application Guest Login Prompt */}
+          {isApplying && isAcceptingApplications && !user && (
+            <div className="mt-6 p-6 bg-[#FEFAE0] rounded-3xl border border-[#E8E4D9] text-center space-y-4 animate-fade-in" id="login-prompt-box">
+              <div className="mx-auto w-12 h-12 bg-[#283618]/10 rounded-full flex items-center justify-center">
+                <Lock className="w-5 h-5 text-[#283618]" />
+              </div>
+              <div className="max-w-md mx-auto">
+                <h3 className="font-bold text-[#132A13] text-base">Sign In to Apply</h3>
+                <p className="text-xs text-[#606C38] mt-1.5 leading-relaxed">
+                  You must be registered as a Candidate on OpportunityHub Liberia to submit your standard CV and track application progress.
+                </p>
+              </div>
+              <div className="flex items-center justify-center gap-3">
+                <button
+                  onClick={() => openAuthModal('login')}
+                  className="px-5 py-2.5 bg-[#283618] hover:bg-[#132A13] text-white rounded-xl text-xs font-bold cursor-pointer transition-all"
+                  id="modal-login-button"
+                >
+                  Sign In
+                </button>
+                <button
+                  onClick={() => openAuthModal('register')}
+                  className="px-5 py-2.5 border border-[#E8E4D9] text-[#283618] hover:border-[#283618] rounded-xl text-xs font-bold cursor-pointer bg-white transition-all"
+                  id="modal-register-button"
+                >
+                  Create Account
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Application Inline Form */}
-          {isApplying && isAcceptingApplications && (
+          {isApplying && isAcceptingApplications && user && (
             <form onSubmit={handleApply} className="mt-6 p-5 sm:p-6 bg-[#F9F8F4] rounded-3xl border border-[#E8E4D9] space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="font-bold text-[#132A13] text-base">Submit Application & Credentials</h3>

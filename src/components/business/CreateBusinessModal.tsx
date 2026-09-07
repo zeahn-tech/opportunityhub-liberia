@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { validateUploadedFile } from '../../core/security/fileValidator';
 import { BusinessListing, County } from '../../types';
 import { LIBERIAN_COUNTIES } from '../../data/seedData';
 import { Building, Lock, Unlock, Plus, Trash2, ShieldCheck, Image as ImageIcon, DollarSign, MapPin, Tag, FileText, Upload } from 'lucide-react';
@@ -91,6 +92,11 @@ export const CreateBusinessModal: React.FC<CreateBusinessModalProps> = ({
     if (!files || files.length === 0) return;
 
     Array.from(files).forEach((file) => {
+      const validation = validateUploadedFile(file, 'image');
+      if (!validation.valid) {
+        alert(validation.error || 'Image upload failed validation.');
+        return;
+      }
       const reader = new FileReader();
       reader.onload = (event) => {
         if (event.target?.result) {

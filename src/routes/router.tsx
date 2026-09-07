@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { logger } from '../core/logging/logger';
 import { UserRole } from '../types';
+import { AccessDenied } from '../components/common/AccessDenied';
 
 export interface RouteMatch {
   path: string;
@@ -106,8 +107,12 @@ export function matchRoute(
 // Protected Route Guard
 export interface RouteGuardProps {
   children: ReactNode;
-  userRole: UserRole;
-  allowedRoles: UserRole[];
+  userRole?: UserRole;
+  allowedRoles?: UserRole[];
+  isAllowed?: boolean;
+  workspaceName?: string;
+  reason?: string;
+  actionHint?: string;
   fallback?: ReactNode;
 }
 
@@ -115,17 +120,28 @@ export const RouteGuard: React.FC<RouteGuardProps> = ({
   children,
   userRole,
   allowedRoles,
+  isAllowed,
+  workspaceName,
+  reason = "You don't have permission to access this workspace.",
+  actionHint,
   fallback
 }) => {
-  if (!allowedRoles.includes(userRole)) {
+  // If explicit isAllowed is supplied, prioritize it
+  let permitted = true;
+  if (typeof isAllowed === 'boolean') {
+    permitted = isAllowed;
+  } else if (allowedRoles && userRole) {
+    permitted = allowedRoles.includes(userRole);
+  }
+
+  if (!permitted) {
     return (
       fallback || (
-        <div className="p-8 text-center bg-white rounded-3xl border border-[#E8E4D9] my-6">
-          <div className="text-base font-bold text-[#8C2F1B]">Access Restricted</div>
-          <div className="text-xs text-[#606C38] mt-1 max-w-md mx-auto">
-            This workspace requires higher organizational permissions. Please switch your persona in the top navigation bar.
-          </div>
-        </div>
+        <AccessDenied
+          workspaceName={workspaceName}
+          reason={reason}
+          actionHint={actionHint}
+        />
       )
     );
   }

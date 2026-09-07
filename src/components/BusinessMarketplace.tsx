@@ -31,6 +31,7 @@ import { BusinessDetailModal } from './business/BusinessDetailModal';
 import { BusinessModerationPanel } from './business/BusinessModerationPanel';
 import { BusinessAnalyticsDashboard } from './analytics/BusinessAnalyticsDashboard';
 import { useConfig } from '../context/ConfigContext';
+import { useAuth } from '../context/AuthContext';
 
 interface BusinessMarketplaceProps {
   businesses: BusinessListing[];
@@ -61,9 +62,12 @@ export const BusinessMarketplace: React.FC<BusinessMarketplaceProps> = ({
   businesses: initialBusinesses,
   currency,
   onAccessApproved,
-  currentUserId = 'user-buyer-1',
+  currentUserId: propCurrentUserId,
   onRefresh
 }) => {
+  const { user, can } = useAuth();
+  const currentUserId = propCurrentUserId || user?.id || '';
+  const canModerate = can('business.moderate') || user?.systemRole === 'moderation_officer' || user?.systemRole === 'moderator' || user?.systemRole === 'platform_admin' || user?.primaryRole === 'platform_admin';
   const { isLowBandwidthMode } = useConfig();
   const [businesses, setBusinesses] = useState<BusinessListing[]>(initialBusinesses);
   const [activeTab, setActiveTab] = useState<'browse' | 'saved' | 'my_listings' | 'moderation' | 'analytics'>('browse');
@@ -102,6 +106,10 @@ export const BusinessMarketplace: React.FC<BusinessMarketplaceProps> = ({
   }, [currentUserId]);
 
   const loadSavedIds = async () => {
+    if (!currentUserId) {
+      setSavedIds([]);
+      return;
+    }
     try {
       const res = await businessService.getSavedIds(currentUserId);
       if (res.data) setSavedIds(res.data);
@@ -301,9 +309,11 @@ export const BusinessMarketplace: React.FC<BusinessMarketplaceProps> = ({
           {[
             { id: 'browse', label: 'Browse Deals', count: businesses.length },
             { id: 'saved', label: 'Saved Deals', count: savedIds.length },
-            { id: 'my_listings', label: 'My Listings', count: businesses.filter((b) => b.ownerUserId === currentUserId).length },
+            { id: 'my_listings', label: 'My Listings', count: currentUserId ? businesses.filter((b) => b.ownerUserId === currentUserId).length : 0 },
             { id: 'analytics', label: 'Saves & Inquiries Analytics', count: null },
-            { id: 'moderation', label: 'Moderation & Governance', count: businesses.filter((b) => !b.isVerified).length }
+            ...(canModerate
+              ? [{ id: 'moderation', label: 'Moderation & Governance', count: businesses.filter((b) => !b.isVerified).length }]
+              : [])
           ].map((tab) => (
             <button
               key={tab.id}

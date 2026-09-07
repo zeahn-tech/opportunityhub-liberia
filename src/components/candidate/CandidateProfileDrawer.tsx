@@ -183,8 +183,8 @@ export const CandidateProfileDrawer: React.FC<CandidateProfileDrawerProps> = ({
                 <span>Work Experience History</span>
               </h4>
               <div className="space-y-3">
-                {profile.experience.map((exp) => (
-                  <div key={exp.id} className="p-4 bg-[#F9F8F6] rounded-2xl border border-[#E8E4D9] space-y-1.5">
+                {profile.experience.map((exp, idx) => (
+                  <div key={exp.id || `exp-${idx}`} className="p-4 bg-[#F9F8F6] rounded-2xl border border-[#E8E4D9] space-y-1.5">
                     <div className="flex items-center justify-between">
                       <h5 className="font-bold text-xs sm:text-sm text-[#132A13]">{exp.jobTitle}</h5>
                       <span className="text-[10px] text-[#A3B18A] font-medium">
@@ -207,8 +207,8 @@ export const CandidateProfileDrawer: React.FC<CandidateProfileDrawerProps> = ({
                 <span>Education & Qualifications</span>
               </h4>
               <div className="space-y-3">
-                {profile.education.map((edu) => (
-                  <div key={edu.id} className="p-3.5 bg-[#F9F8F6] rounded-2xl border border-[#E8E4D9]">
+                {profile.education.map((edu, idx) => (
+                  <div key={edu.id || `edu-${idx}`} className="p-3.5 bg-[#F9F8F6] rounded-2xl border border-[#E8E4D9]">
                     <div className="flex items-center justify-between">
                       <div className="font-bold text-xs text-[#132A13]">{edu.degree}</div>
                       <span className="text-[10px] text-[#A3B18A]">{edu.startYear} - {edu.endYear || 'Present'}</span>
@@ -228,12 +228,13 @@ export const CandidateProfileDrawer: React.FC<CandidateProfileDrawerProps> = ({
                 <span>Competencies & Skills</span>
               </h4>
               <div className="flex flex-wrap gap-2">
-                {profile.skills.map((skill) => {
+                {profile.skills.map((skill, idx) => {
                   const name = typeof skill === 'string' ? skill : skill.name;
                   const level = typeof skill === 'string' ? 4 : skill.level;
+                  const skillKey = typeof skill === 'string' ? skill : (skill.id || skill.name || `sk-${idx}`);
                   return (
                     <span
-                      key={typeof skill === 'string' ? skill : skill.id}
+                      key={skillKey}
                       className="px-3 py-1 bg-[#ECF3E9] text-[#283618] rounded-xl border border-[#D9E3D5] text-xs font-medium flex items-center gap-1.5"
                     >
                       <span>{name}</span>
@@ -253,8 +254,8 @@ export const CandidateProfileDrawer: React.FC<CandidateProfileDrawerProps> = ({
                 <span>Languages</span>
               </h4>
               <div className="grid grid-cols-2 gap-2">
-                {profile.languages.map((l) => (
-                  <div key={l.id} className="p-2.5 bg-[#F9F8F6] rounded-xl border border-[#E8E4D9] text-xs">
+                {profile.languages.map((l, idx) => (
+                  <div key={l.id || l.language || `lang-${idx}`} className="p-2.5 bg-[#F9F8F6] rounded-xl border border-[#E8E4D9] text-xs">
                     <div className="font-bold text-[#132A13]">{l.language}</div>
                     <div className="text-[10px] text-[#606C38] capitalize">{l.proficiency}</div>
                   </div>
@@ -271,8 +272,8 @@ export const CandidateProfileDrawer: React.FC<CandidateProfileDrawerProps> = ({
                 <span>Portfolio & Public Works</span>
               </h4>
               <div className="space-y-2">
-                {profile.portfolio.map((p) => (
-                  <div key={p.id} className="p-3 bg-[#F9F8F6] rounded-xl border border-[#E8E4D9] text-xs">
+                {profile.portfolio.map((p, idx) => (
+                  <div key={p.id || `port-${idx}`} className="p-3 bg-[#F9F8F6] rounded-xl border border-[#E8E4D9] text-xs">
                     <div className="font-bold text-[#132A13]">{p.title}</div>
                     <p className="text-[#606C38] mt-1">{p.description}</p>
                     {p.url && (

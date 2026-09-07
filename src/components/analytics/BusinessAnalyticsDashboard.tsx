@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { analyticsService } from '../../services/analyticsService';
+import { useAuth } from '../../context/AuthContext';
 import { 
   Eye, 
   Bookmark, 
@@ -20,14 +21,20 @@ interface BusinessAnalyticsDashboardProps {
 }
 
 export const BusinessAnalyticsDashboard: React.FC<BusinessAnalyticsDashboardProps> = ({
-  currentUserId = 'user-seller-1',
-  isPlatformAdmin = false
+  currentUserId: propUserId,
+  isPlatformAdmin: propIsPlatformAdmin
 }) => {
+  const { user } = useAuth();
+  const currentUserId = propUserId !== undefined ? propUserId : (user?.id || '');
+  const isPlatformAdmin = propIsPlatformAdmin !== undefined
+    ? propIsPlatformAdmin
+    : (user?.systemRole === 'platform_admin' || user?.primaryRole === 'platform_admin');
+
   // Respect tenant isolation: 
   // If the user is a platform admin, show platform-wide enterprise marketplace trends.
   // Otherwise, filter strictly to listings owned by the logged-in seller.
   const metrics = useMemo(() => {
-    const ownerId = isPlatformAdmin ? undefined : currentUserId;
+    const ownerId = isPlatformAdmin ? undefined : (currentUserId || 'none');
     return analyticsService.getBusinessMarketplaceAnalytics(ownerId);
   }, [currentUserId, isPlatformAdmin]);
 

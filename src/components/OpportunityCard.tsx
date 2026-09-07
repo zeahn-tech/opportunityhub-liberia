@@ -3,6 +3,7 @@ import { Opportunity } from '../types';
 import { MapPin, Calendar, CheckCircle2, Building, ShieldCheck, Sparkles, Bookmark, AlertCircle, Clock, ShieldAlert } from 'lucide-react';
 import { OPPORTUNITY_TYPES } from '../config/constants';
 import { ReportModal } from './trust/ReportModal';
+import { useAuth } from '../context/AuthContext';
 
 interface OpportunityCardProps {
   opportunity: Opportunity;
@@ -19,6 +20,7 @@ export const OpportunityCard: React.FC<OpportunityCardProps> = ({
   isSaved = false,
   onToggleSave
 }) => {
+  const { user } = useAuth();
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const LRD_RATE = 195;
 
@@ -147,7 +149,7 @@ export const OpportunityCard: React.FC<OpportunityCardProps> = ({
           reportType="listing"
           targetId={opportunity.id}
           targetTitleOrName={opportunity.title}
-          currentUserId="user-seeker-1"
+          currentUserId={user?.id || ''}
         />
 
         {/* Organization Name & Location */}

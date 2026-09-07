@@ -4,8 +4,12 @@ export interface AppConfig {
   defaultCurrency: 'USD' | 'LRD';
   enableLowBandwidthMode: boolean;
   pwaEnabled: boolean;
+  supabaseUrl: string;
+  supabaseAnonKey: string;
+  enableDemoMode: boolean;
   isProduction: boolean;
   isDevelopment: boolean;
+  isTest: boolean;
 }
 
 function parseBoolean(val: string | undefined, defaultValue: boolean): boolean {
@@ -20,15 +24,30 @@ function loadConfig(): AppConfig {
   const enableLowBandwidthMode = parseBoolean(import.meta.env.VITE_ENABLE_LOW_BANDWIDTH_MODE, false);
   const pwaEnabled = parseBoolean(import.meta.env.VITE_PWA_ENABLED, true);
 
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+  const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+
+  const isProd = env === 'production';
+  const isDev = env === 'development' || env === 'test';
+
+  // Demo mode defaults to true in development/test, but strictly false in production/staging unless explicitly overridden for testing
+  const defaultDemoMode = isDev;
+  const enableDemoMode = parseBoolean(import.meta.env.VITE_ENABLE_DEMO_MODE, defaultDemoMode);
+
   return Object.freeze({
     appEnv: env,
     apiBaseUrl,
     defaultCurrency,
     enableLowBandwidthMode,
     pwaEnabled,
-    isProduction: env === 'production',
-    isDevelopment: env === 'development'
+    supabaseUrl,
+    supabaseAnonKey,
+    enableDemoMode,
+    isProduction: isProd,
+    isDevelopment: isDev,
+    isTest: env === 'test'
   });
 }
 
 export const envConfig: AppConfig = loadConfig();
+

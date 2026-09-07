@@ -331,8 +331,37 @@ export interface VerificationAudit {
   documents: string[];
 }
 
-export type SystemRole = 'user' | 'moderator' | 'verifier' | 'finance_admin' | 'platform_admin';
+export type SystemRole =
+  | 'user'
+  | 'platform_admin'
+  | 'verification_officer'
+  | 'moderation_officer'
+  | 'verifier'
+  | 'moderator'
+  | 'finance_admin';
+
+export type PlatformRole = 'platform_admin' | 'verification_officer' | 'moderation_officer' | 'user';
+
 export type OrgRole = 'owner' | 'admin' | 'recruiter' | 'hiring_manager' | 'member';
+
+export type UserCapability =
+  | 'job_seeker'
+  | 'buyer'
+  | 'seller'
+  | 'service_provider'
+  | 'find_opportunities'
+  | 'hire_or_recruit'
+  | 'sell_business'
+  | 'find_business'
+  | 'offer_services';
+
+export interface UserPreferences {
+  emailNotifications: boolean;
+  smsNotifications: boolean;
+  marketingAlerts: boolean;
+  profileVisibility: 'public' | 'registered_only' | 'private';
+  showPhoneNumber: boolean;
+}
 
 export interface User {
   id: string;
@@ -349,6 +378,9 @@ export interface User {
   isPhoneVerified: boolean;
   createdAt: string;
   lastLoginAt?: string;
+  capabilities: UserCapability[];
+  onboardingCompleted: boolean;
+  preferences: UserPreferences;
 }
 
 export interface UserSession {
@@ -388,6 +420,8 @@ export interface UserProfile {
   skills: string[];
   visibility: 'public' | 'registered_only' | 'private';
   updatedAt: string;
+  capabilities: UserCapability[];
+  verificationState: 'unverified' | 'pending' | 'verified';
 }
 
 export interface OrganizationMembership {
@@ -395,10 +429,15 @@ export interface OrganizationMembership {
   organizationId: string;
   userId: string;
   orgRole: OrgRole;
-  status: 'active' | 'invited' | 'suspended';
+  status: 'active' | 'invited' | 'suspended' | 'revoked';
   permissions: (OrgPermission | string)[];
   createdAt: string;
   updatedAt?: string;
+  acceptedAt?: string;
+  revokedAt?: string;
+  invitedBy?: string;
+  invitedAt?: string;
+  invitationId?: string;
 }
 
 export interface OrganizationInvitation {
@@ -415,6 +454,7 @@ export interface OrganizationInvitation {
   expiresAt: string;
   createdAt: string;
   respondedAt?: string;
+  notes?: string;
 }
 
 export interface EducationItem {
@@ -578,6 +618,7 @@ export type RBACAction =
   | 'business.approve_access'
   | 'business.list'
   | 'business.edit'
+  | 'business.moderate'
   | 'proposal.submit'
   | 'organization.create'
   | 'organization.manage_members'

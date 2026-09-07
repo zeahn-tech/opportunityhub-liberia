@@ -14,7 +14,7 @@ import {
   AlertCircle,
   KeyRound,
   CheckCircle2,
-  Sparkles
+  
 } from 'lucide-react';
 import { Button } from '../../design-system/Button';
 
@@ -136,11 +136,6 @@ export const AuthModal: React.FC = () => {
     }
   };
 
-  const handleQuickLogin = async (role: UserRole) => {
-    switchRole(role);
-    closeAuthModal();
-  };
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#132A13]/60 backdrop-blur-xs overflow-y-auto">
       <div className="relative w-full max-w-lg bg-white rounded-3xl border border-[#E8E4D9] shadow-2xl overflow-hidden my-8">
@@ -177,87 +172,12 @@ export const AuthModal: React.FC = () => {
               <span>{errorMessage}</span>
             </div>
           )}
-
           {successMessage && (
             <div className="mb-5 p-3.5 bg-[#ECF3E9] border border-[#4F772D]/30 rounded-2xl flex items-start gap-3 text-xs text-[#283618]">
               <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-[#4F772D]" />
               <span>{successMessage}</span>
             </div>
           )}
-
-          {/* Quick Persona Access for Testing / Evaluation */}
-          <div className="mb-6 p-3 bg-[#F9F8F6] rounded-2xl border border-[#E8E4D9]">
-            <div className="text-[11px] font-bold text-[#606C38] uppercase tracking-wider mb-2 flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-[#BC6C25]" />
-              Quick-Switch Demo Persona (All 8 Roles)
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-xs">
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('job_seeker')}
-                className="p-1.5 rounded-xl border border-[#E8E4D9] bg-white hover:bg-[#ECF3E9] hover:text-[#283618] text-left transition-colors cursor-pointer"
-              >
-                <div className="font-bold text-[11px]">Job Seeker</div>
-                <div className="text-[9px] text-[#606C38] truncate">Tamba K.</div>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('employer')}
-                className="p-1.5 rounded-xl border border-[#E8E4D9] bg-white hover:bg-[#ECF3E9] hover:text-[#283618] text-left transition-colors cursor-pointer"
-              >
-                <div className="font-bold text-[11px]">Employer</div>
-                <div className="text-[9px] text-[#606C38] truncate">Save Children</div>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('recruiter')}
-                className="p-1.5 rounded-xl border border-[#E8E4D9] bg-white hover:bg-[#ECF3E9] hover:text-[#283618] text-left transition-colors cursor-pointer"
-              >
-                <div className="font-bold text-[11px]">Recruiter</div>
-                <div className="text-[9px] text-[#606C38] truncate">Korto Flomo</div>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('business_seller')}
-                className="p-1.5 rounded-xl border border-[#E8E4D9] bg-white hover:bg-[#ECF3E9] hover:text-[#283618] text-left transition-colors cursor-pointer"
-              >
-                <div className="font-bold text-[11px]">Seller (M&A)</div>
-                <div className="text-[9px] text-[#606C38] truncate">Samuel Tweh</div>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('buyer')}
-                className="p-1.5 rounded-xl border border-[#E8E4D9] bg-white hover:bg-[#ECF3E9] hover:text-[#283618] text-left transition-colors cursor-pointer"
-              >
-                <div className="font-bold text-[11px]">Buyer / Investor</div>
-                <div className="text-[9px] text-[#606C38] truncate">N. Sherman</div>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('service_provider')}
-                className="p-1.5 rounded-xl border border-[#E8E4D9] bg-white hover:bg-[#ECF3E9] hover:text-[#283618] text-left transition-colors cursor-pointer"
-              >
-                <div className="font-bold text-[11px]">Provider</div>
-                <div className="text-[9px] text-[#606C38] truncate">Patrick Sumo</div>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('organization_admin')}
-                className="p-1.5 rounded-xl border border-[#E8E4D9] bg-white hover:bg-[#ECF3E9] hover:text-[#283618] text-left transition-colors cursor-pointer"
-              >
-                <div className="font-bold text-[11px]">Org Admin</div>
-                <div className="text-[9px] text-[#606C38] truncate">Marie Weah</div>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('platform_admin')}
-                className="p-1.5 rounded-xl border border-[#E8E4D9] bg-white hover:bg-[#ECF3E9] hover:text-[#283618] text-left transition-colors cursor-pointer"
-              >
-                <div className="font-bold text-[11px]">Platform Admin</div>
-                <div className="text-[9px] text-[#606C38] truncate">SuperAdmin</div>
-              </button>
-            </div>
-          </div>
 
           {/* VIEW: LOGIN */}
           {authModalView === 'login' && (
@@ -273,15 +193,14 @@ export const AuthModal: React.FC = () => {
                     required
                     value={loginEmail}
                     onChange={(e) => setLoginEmail(e.target.value)}
-                    placeholder="e.g. tamba.kollie@gmail.com"
+                    placeholder="Enter your email"
                     className="w-full pl-10 pr-4 py-2.5 bg-[#F9F8F6] border border-[#E8E4D9] rounded-xl text-sm focus:outline-none focus:border-[#283618]"
                   />
                 </div>
               </div>
-
               <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-xs font-bold text-[#132A13] uppercase tracking-wider">
+                  <label className="block text-xs font-bold text-[#132A13] uppercase tracking-wider">
                     Password
                   </label>
                   <button
@@ -290,9 +209,9 @@ export const AuthModal: React.FC = () => {
                       setAuthModalView('forgot_password');
                       setErrorMessage(null);
                     }}
-                    className="text-xs text-[#BC6C25] hover:underline cursor-pointer"
+                    className="text-xs text-[#BC6C25] font-bold hover:underline cursor-pointer"
                   >
-                    Forgot password?
+                    Forgot Password?
                   </button>
                 </div>
                 <div className="relative">
@@ -306,19 +225,14 @@ export const AuthModal: React.FC = () => {
                     className="w-full pl-10 pr-4 py-2.5 bg-[#F9F8F6] border border-[#E8E4D9] rounded-xl text-sm focus:outline-none focus:border-[#283618]"
                   />
                 </div>
-                <div className="text-[11px] text-[#606C38] mt-1">
-                  Default seed password: <code className="bg-[#E8E4D9] px-1 py-0.5 rounded">Password123!</code>
-                </div>
               </div>
-
               <div className="pt-2">
                 <Button type="submit" variant="primary" size="lg" className="w-full" isLoading={isLoading}>
                   Sign In
                 </Button>
               </div>
-
               <div className="text-center pt-2 text-xs text-[#606C38]">
-                Don't have an account yet?{' '}
+                Don't have an account?{' '}
                 <button
                   type="button"
                   onClick={() => {
@@ -338,7 +252,7 @@ export const AuthModal: React.FC = () => {
             <form onSubmit={handleRegisterSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-[#132A13] uppercase tracking-wider mb-1.5">
-                  Full Legal Name
+                  Full Name
                 </label>
                 <div className="relative">
                   <UserIcon className="w-4 h-4 text-[#606C38] absolute left-3.5 top-3" />
@@ -347,12 +261,12 @@ export const AuthModal: React.FC = () => {
                     required
                     value={regFullName}
                     onChange={(e) => setRegFullName(e.target.value)}
-                    placeholder="e.g. Saye Flomo"
+                    placeholder="Enter your full name"
                     className="w-full pl-10 pr-4 py-2.5 bg-[#F9F8F6] border border-[#E8E4D9] rounded-xl text-sm focus:outline-none focus:border-[#283618]"
                   />
                 </div>
               </div>
-
+              
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-[#132A13] uppercase tracking-wider mb-1.5">
@@ -365,15 +279,14 @@ export const AuthModal: React.FC = () => {
                       required
                       value={regEmail}
                       onChange={(e) => setRegEmail(e.target.value)}
-                      placeholder="saye@example.lr"
+                      placeholder="e.g. tamba@example.com"
                       className="w-full pl-10 pr-4 py-2.5 bg-[#F9F8F6] border border-[#E8E4D9] rounded-xl text-sm focus:outline-none focus:border-[#283618]"
                     />
                   </div>
                 </div>
-
                 <div>
                   <label className="block text-xs font-bold text-[#132A13] uppercase tracking-wider mb-1.5">
-                    Phone (Liberia)
+                    Phone Number
                   </label>
                   <div className="relative">
                     <Phone className="w-4 h-4 text-[#606C38] absolute left-3.5 top-3" />
@@ -381,13 +294,13 @@ export const AuthModal: React.FC = () => {
                       type="tel"
                       value={regPhone}
                       onChange={(e) => setRegPhone(e.target.value)}
-                      placeholder="+231 77 ..."
+                      placeholder="+231..."
                       className="w-full pl-10 pr-4 py-2.5 bg-[#F9F8F6] border border-[#E8E4D9] rounded-xl text-sm focus:outline-none focus:border-[#283618]"
                     />
                   </div>
                 </div>
               </div>
-
+              
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-[#132A13] uppercase tracking-wider mb-1.5">

@@ -3,7 +3,7 @@ import { db } from '../db/dbClient';
 import { apiClient, ApiResponse } from './apiClient';
 import { authService } from './authService';
 import { notificationService } from './notificationService';
-import { ForbiddenError, UnauthorizedError } from '../core/errors/AppError';
+import { ForbiddenError, NotFoundError, UnauthorizedError } from '../core/errors/AppError';
 
 export const applicationService = {
   async listByOpportunity(opportunityId: string): Promise<ApiResponse<Application[]>> {
@@ -104,12 +104,18 @@ export const applicationService = {
         }
   ): Promise<ApiResponse<Application>> {
     return apiClient.execute(() => {
-      if (!authService.can('application.advance_stage')) {
-        throw new ForbiddenError('You do not have permission to modify candidate recruitment pipeline stages.');
-      }
       const session = authService.getSession();
       const tenantId = session.activeOrganization?.id;
       const actorUserId = session.user?.id;
+
+      const app = db.getApplicationById(applicationId, actorUserId, tenantId);
+      if (!app) {
+        throw new NotFoundError('Application', applicationId);
+      }
+
+      if (!authService.can('application.advance_stage', app.organizationId)) {
+        throw new ForbiddenError('You do not have permission to modify candidate recruitment pipeline stages.');
+      }
 
       const normalizedOptions =
         typeof options === 'string'
@@ -161,12 +167,18 @@ export const applicationService = {
     }
   ): Promise<ApiResponse<Application>> {
     return apiClient.execute(() => {
-      if (!authService.can('application.review')) {
-        throw new ForbiddenError('You do not have permission to evaluate candidates.');
-      }
       const session = authService.getSession();
       const tenantId = session.activeOrganization?.id;
       const actorUserId = session.user?.id;
+
+      const app = db.getApplicationById(applicationId, actorUserId, tenantId);
+      if (!app) {
+        throw new NotFoundError('Application', applicationId);
+      }
+
+      if (!authService.can('application.review', app.organizationId)) {
+        throw new ForbiddenError('You do not have permission to evaluate candidates.');
+      }
       return db.updateApplicationEvaluation(applicationId, evaluation, tenantId, actorUserId);
     });
   }

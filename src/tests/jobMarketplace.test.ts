@@ -8,7 +8,7 @@ describe('Job Marketplace Core Workflows & Lifecycle Tests', () => {
   beforeEach(() => {
     db.resetToSeedDefaults();
     // Default to authorized employer (Save the Children Liberia, org-save-children)
-    authService.switchRole('employer');
+    authService.loginAsRoleForTest('employer');
   });
 
   it('allows an authorized employer to create a job in draft state', async () => {
@@ -192,7 +192,7 @@ describe('Job Marketplace Core Workflows & Lifecycle Tests', () => {
 
   it('enforces multi-tenant isolation: Employer cannot edit or delete opportunities from another organization', async () => {
     // Switch to Kofa Technologies (service_provider)
-    authService.switchRole('service_provider');
+    authService.loginAsRoleForTest('service_provider');
     const contractorSession = authService.getSession();
     expect(contractorSession.activeOrganization!.id).toBe('org-kofa-tech');
 

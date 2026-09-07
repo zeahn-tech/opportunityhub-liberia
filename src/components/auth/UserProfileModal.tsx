@@ -32,11 +32,11 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
   const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'sessions' | 'organizations'>('profile');
 
   // Profile Form state
-  const [fullName, setFullName] = useState(user.fullName);
-  const [phoneNumber, setPhoneNumber] = useState(user.phoneNumber || '');
+  const [fullName, setFullName] = useState(user?.fullName || '');
+  const [phoneNumber, setPhoneNumber] = useState(user?.phoneNumber || '');
   const [headline, setHeadline] = useState('');
   const [bio, setBio] = useState('');
-  const [county, setCounty] = useState<County>(user.primaryCounty);
+  const [county, setCounty] = useState<County>(user?.primaryCounty || 'Montserrado');
   const [city, setCity] = useState('Monrovia');
   const [skillsText, setSkillsText] = useState('Operations, Logistics, Project Management');
   const [visibility, setVisibility] = useState<'public' | 'registered_only' | 'private'>('public');
@@ -58,7 +58,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && user) {
       setFullName(user.fullName);
       setPhoneNumber(user.phoneNumber || '');
       setCounty(user.primaryCounty);
@@ -78,7 +78,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
     }
   }, [isOpen, user]);
 
-  if (!isOpen) return null;
+  if (!isOpen || !user) return null;
 
   const handleProfileSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

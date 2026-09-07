@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
+import { validateUploadedFile } from '../core/security/fileValidator';
 import { VerificationAudit, VerificationBadge } from '../types';
-import { ShieldCheck, FileCheck, CheckCircle2, XCircle, Clock, UploadCloud, Building2, AlertCircle, FileText } from 'lucide-react';
+import { ShieldCheck, FileCheck, CheckCircle2, XCircle, Clock, UploadCloud, Building2, AlertCircle, FileText, Lock } from 'lucide-react';
 import { LIBERIAN_COUNTIES } from '../data/seedData';
 import { trustSafetyService } from '../services/trustSafetyService';
+import { useAuth } from '../context/AuthContext';
 
 interface VerificationHubProps {
   audits: VerificationAudit[];
@@ -15,8 +17,12 @@ export const VerificationHub: React.FC<VerificationHubProps> = ({
   audits,
   onAuditDecision,
   onSubmitAudit,
-  currentUserId = 'user-employer-1'
+  currentUserId: propCurrentUserId
 }) => {
+  const { user, can } = useAuth();
+  const currentUserId = propCurrentUserId || user?.id || '';
+  const canDecide = can('verification.decide') || user?.systemRole === 'verification_officer' || user?.systemRole === 'platform_admin' || user?.primaryRole === 'platform_admin';
+
   const [activeSubTab, setActiveSubTab] = useState<'queue' | 'apply' | 'standards'>('apply');
   const [orgName, setOrgName] = useState('');
   const [orgType, setOrgType] = useState('Private Enterprise');
@@ -33,8 +39,14 @@ export const VerificationHub: React.FC<VerificationHubProps> = ({
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
+      const validation = validateUploadedFile(file, 'document');
+      if (!validation.valid) {
+        setSubmissionError(validation.error || 'File validation failed.');
+        return;
+      }
+      setSubmissionError('');
       const newDoc = {
-        fileName: file.name,
+        fileName: validation.cleanFileName,
         urlOrData: URL.createObjectURL(file)
       };
       setUploadedFiles((prev) => [...prev, newDoc]);
@@ -43,6 +55,10 @@ export const VerificationHub: React.FC<VerificationHubProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!currentUserId) {
+      setSubmissionError('Please sign in with your enterprise account to submit verification documents.');
+      return;
+    }
     if (!orgName || !registryNumber) {
       setSubmissionError('Please fill out the organization name and LBR registration number.');
       return;
@@ -156,6 +172,15 @@ export const VerificationHub: React.FC<VerificationHubProps> = ({
             <span className="text-xs text-[#606C38]">Role: LBR / Ministry Verification Officer</span>
           </div>
 
+          {!canDecide && (
+            <div className="p-4 bg-[#FEFAE0] border border-[#E8E4D9] rounded-2xl text-xs text-[#BC6C25] flex items-center gap-2.5">
+              <AlertCircle className="w-4 h-4 shrink-0 text-[#BC6C25]" />
+              <span>
+                You are viewing the statutory verification queue in read-only mode. You don't have permission to approve or reject submissions without official Verification Officer or Platform Administrator authorization.
+              </span>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 gap-4">
             {audits.map((item) => (
               <div
@@ -198,19 +223,27 @@ export const VerificationHub: React.FC<VerificationHubProps> = ({
 
                 {item.status !== 'approved' && (
                   <div className="flex items-center gap-2 sm:self-center shrink-0">
-                    <button
-                      onClick={() => onAuditDecision(item.id, 'rejected')}
-                      className="px-3.5 py-2 border border-red-200 text-red-700 hover:bg-red-50 rounded-xl text-xs font-semibold"
-                    >
-                      Reject Proof
-                    </button>
-                    <button
-                      onClick={() => onAuditDecision(item.id, 'approved')}
-                      className="px-4 py-2 bg-[#4F772D] hover:bg-[#283618] text-white rounded-xl text-xs font-bold shadow-xs flex items-center gap-1.5"
-                    >
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>Approve & Grant Badge</span>
-                    </button>
+                    {canDecide ? (
+                      <>
+                        <button
+                          onClick={() => onAuditDecision(item.id, 'rejected')}
+                          className="px-3.5 py-2 border border-red-200 text-red-700 hover:bg-red-50 rounded-xl text-xs font-semibold cursor-pointer"
+                        >
+                          Reject Proof
+                        </button>
+                        <button
+                          onClick={() => onAuditDecision(item.id, 'approved')}
+                          className="px-4 py-2 bg-[#4F772D] hover:bg-[#283618] text-white rounded-xl text-xs font-bold shadow-xs flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>Approve & Grant Badge</span>
+                        </button>
+                      </>
+                    ) : (
+                      <span className="text-[11px] text-[#A3B18A] italic px-2.5 py-1 bg-stone-50 rounded-xl border border-stone-200">
+                        Auditor Review Only
+                      </span>
+                    )}
                   </div>
                 )}
               </div>
