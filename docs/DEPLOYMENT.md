@@ -219,10 +219,13 @@ npx supabase migration new <short_description>
 npx supabase db push
 ```
 
-**Status as of this phase**: migrations are written, reviewed, and apply cleanly
-in isolation (validated by review — see the header comments in
-`supabase/migrations/20260907203348_init_schema.sql` — since this sandbox has no
-network route to `*.supabase.co`). They have **not yet been pushed to a live
-project**; `npx supabase db push` and the verification script above still need to
-be run against real project credentials. See `docs/PRODUCTION_CERTIFICATION_REPORT.md`
-→ "Database Status" for the exact, current state.
+**Status as of this phase**: migrations have been applied to the live project
+(`npx supabase db push`, 3/3 migrations applied) and `scripts/verify-supabase-connection.ts`
+has passed 25/25 checks against real anon and service-role keys — RLS is confirmed
+enabled on every table, anon access is confirmed scoped to public policies, and the
+service-role key is confirmed to bypass RLS. The application itself
+(`src/services/*.ts`, `src/db/dbClient.ts`) still has not been touched and does not
+use this backend yet — that's Phase 3. See `docs/PRODUCTION_CERTIFICATION_REPORT.md`
+→ "Database Status" for the full detail, including two open Phase 3 design questions
+(auth-bootstrapping trigger for `public.users`, and a couple of intentionally-soft FK
+references) flagged there.
