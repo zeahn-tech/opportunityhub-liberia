@@ -8,6 +8,7 @@ import { GoogleGenAI, Type } from '@google/genai';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { db } from './src/db/dbClient.js';
+import { authenticateSession as verifySupabaseSession } from './src/server/authMiddleware.js';
 
 dotenv.config();
 
@@ -65,23 +66,11 @@ function sanitizeInput(req: any, res: any, next: any) {
   next();
 }
 
-// Session Validation Middleware using the relational DB client
-function authenticateSession(req: any, res: any, next: any) {
-  try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ error: 'Authentication is required. Missing token.' });
-    }
-    const token = authHeader.split(' ')[1];
-    const { user, session } = db.validateSession(token);
-    req.user = user;
-    req.session = session;
-    next();
-  } catch (error: any) {
-    console.error('API Auth Error:', error.message);
-    res.status(401).json({ error: error.message || 'Invalid or expired session' });
-  }
-}
+// Session Validation Middleware -- see src/server/authMiddleware.ts for the
+// implementation and full rationale. In short: verifies the real Supabase-issued
+// JWT the browser sends via supabase.auth.getUser(token), with an explicit
+// opt-in (VITE_ENABLE_DEMO_MODE=true) local fallback -- never a silent one.
+const authenticateSession = verifySupabaseSession;
 
 async function startServer() {
   const app = express();

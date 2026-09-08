@@ -6,6 +6,8 @@
 **Project**: OpportunityHub Liberia  
 **Status**: 🛡️ **PRODUCTION READY**
 
+> **Update — September 8, 2026 (Phase 2, Auth)**: Section 2 ("Authentication Status") below has been rewritten to reflect this phase's work migrating authentication to Supabase Auth as the sole source of identity/session truth. The original Section 2 text (SHA-256/local session store) is superseded and no longer accurate; it described the pre-Phase-2 local-auth implementation. The rest of this report reflects the state as of the original September 7 audit and has not been re-verified as part of this phase.
+
 ---
 
 ### Executive Summary
@@ -28,14 +30,34 @@ Following extensive test suite execution, deep code pattern checks, and input sa
 
 ### 2. Authentication Status
 
-* **Status**: 🟢 **100% Fully Implemented & Certified**
-* **Review Details**:
-  * **Hashing Standards**: Implements state-of-the-art secure salted SHA-256 password hashing. Raw passwords are never stored, logged, or serialized.
-  * **Session Engine**: Built on cryptographically strong random session tokens, verified on every request against active database entries.
-  * **Edge Case Verification**: Session restoration, multi-tab states, and guest-state accesses are hardened. Clicking "Sign Out" completely purges local credentials synchronously, preventing race conditions or visual stale states.
-  * **Demo-mode Control**: Fully isolated and disabled by default in production configurations, forcing standard identity verification gates.
+* **Status**: 🟡 **Phase 2 complete: Supabase Auth is now the sole source of identity and session truth for real users. Full live HTTP-level end-to-end verification is still pending an environment with unrestricted network access to `*.supabase.co`** (see "What was NOT verified" below — this is an honest limitation, not a hidden gap).
 
----
+* **What changed this phase**:
+  * `src/services/authService.ts` no longer calls `db.registerUser`/`db.authenticateUser` (the local SHA-256 password path) for real users. `register()`, `login()`, `logout()`, `requestPasswordReset()`, `resetPassword()`, and `verifyEmail()` go through `supabase.auth.*` exclusively when Supabase is configured. A Supabase error is thrown to the caller as-is — there is no `catch` block that silently creates a local session on failure.
+  * The session token stored and used app-wide is the real Supabase `access_token`, not a locally-generated string.
+  * `src/core/security/crypto.ts`'s `hashPassword`/`verifyPassword` are now documented and scoped as **demo-mode only** (used by `dbClient.ts`'s opt-in local path). They are not called anywhere on the real-auth path.
+  * **Local demo mode** (`VITE_ENABLE_DEMO_MODE=true`, default `false` outside dev/test — see `src/config/env.ts`) still exists, is fully isolated behind that flag, and now surfaces a persistent, unmissable **"Demo Mode"** banner (`src/components/auth/DemoModeBanner.tsx`, mounted in `App.tsx`) whenever an active session is a demo session, so it can never be mistaken for a real account.
+  * **Profile sync**: `supabase/migrations/20260908120000_sync_auth_users_to_public_users.sql` adds a `SECURITY DEFINER` Postgres trigger (`on_auth_user_created`, `AFTER INSERT ON auth.users`) that creates the matching `public.users` row from `raw_user_meta_data` in the same transaction GoTrue uses to create the identity, plus a second trigger (`on_auth_user_email_confirmed`) that syncs `is_email_verified`/`account_status` when the user confirms their email. A Postgres trigger was chosen over an edge function specifically for atomicity — see the migration file's header comment for the full reasoning. `capabilities`/`preferences`/`onboardingCompleted` are not yet columns on `public.users` (that data model migration is Phase 3); `authService.ts` merges those in from the local dbClient profile cache as a documented, temporary read-model sync (`db.upsertUserFromExternalIdentity` / `db.upsertUserProfileFromExternalIdentity` — explicitly NOT an authentication mechanism, no password involved).
+  * **Server-side session verification**: `server.ts`'s `authenticateSession` middleware (extracted to `src/server/authMiddleware.ts` for testability) no longer checks `db.validateSession` — an in-process map that never saw real browser-issued tokens, so every real request would previously 401. It now calls `supabase.auth.getUser(token)` using the anon key, which asks Supabase itself to verify the token's signature and expiry. A local dbClient session is accepted as a fallback **only** when `VITE_ENABLE_DEMO_MODE=true` is explicitly set server-side **and** Supabase rejected the token — never silently, and never when Supabase is configured, reachable, and demo mode is off.
+  * **Session restore**: `src/context/AuthContext.tsx` now calls `authService.restoreSupabaseSession()` on mount (re-verifying against `supabase.auth.getSession()` rather than trusting the localStorage-cached session) and subscribes to `authService.onAuthStateChange()` (wrapping `supabase.auth.onAuthStateChange`) for token refresh / expiry / external sign-out.
+
+* **What WAS verified, live, against the real project** (`tnnwbjenajtwiuiqbwpj`, via the Supabase MCP connector — a channel independent of this build environment's own network sandbox, which cannot reach `*.supabase.co` directly):
+  1. The migration above was applied to the live project (`apply_migration`, success).
+  2. A row was inserted into `auth.users` (simulating what GoTrue does on signup) with `raw_user_meta_data` for `fullName`/`primaryRole`/`primaryCounty`. **Result**: a matching `public.users` row was created automatically with `full_name = 'Trigger Test User'`, `primary_role = 'employer'`, `primary_county = 'Nimba'`, `account_status = 'pending_verification'`, `is_email_verified = false` — confirming the `on_auth_user_created` trigger fires correctly.
+  3. `email_confirmed_at` was then set on that same `auth.users` row. **Result**: `public.users.is_email_verified` flipped to `true` and `account_status` flipped to `'active'` — confirming the `on_auth_user_email_confirmed` trigger fires correctly.
+  4. Both test rows were deleted afterward; the live project was left clean.
+
+* **What WAS verified via automated tests** (`npm test` — 95/95 passing across 12 files, including two new files added this phase):
+  * `src/tests/authServiceSupabase.test.ts` (6 tests) — mocks `../lib/supabaseClient` at the module boundary (not a live network call) and proves: `register()`/`login()` call `supabase.auth.signUp`/`signInWithPassword` and never call `db.registerUser`/`db.authenticateUser` (asserted via `vi.spyOn(...).not.toHaveBeenCalled()`); a Supabase error (including a rejected/network-failure promise) is thrown to the caller rather than swallowed; the resulting session's `token` is the exact mocked `access_token` string, proving no local token substitution; `logout()` calls `supabase.auth.signOut()` and clears local state even if that call errors; demo mode only activates (`isDemoMode: true`) when Supabase is unconfigured **and** `enableDemoMode` is true; with Supabase unconfigured and demo mode off, `register()`/`login()` throw `/Authentication is not configured/` rather than silently creating a session.
+  * `src/tests/authMiddleware.test.ts` (6 tests) — mocks `@supabase/supabase-js`'s `createClient` (not a live network call) and proves: a request with no `Authorization` header is rejected before any Supabase call; a valid token is accepted with `req.user` populated from the (mocked) Supabase response; a garbage/invalid token is rejected with 401 **and demo mode is never consulted when it's off**; a locally-issued demo token is accepted **only** when demo mode is explicitly enabled **and** Supabase already rejected the token (`req.isDemoSession = true`); an expired local demo session is still rejected even with demo mode on; with Supabase entirely unconfigured and demo mode off, the request is rejected outright rather than silently allowed through.
+  * Full `npm run lint` (`tsc --noEmit`) passes with zero errors. `npm run build` succeeds. `scripts/check-no-service-role-in-client.sh` passes against both source and the built client bundle (no service-role key leakage).
+
+* **What was NOT verified** (explicitly, so this is not overstated):
+  * A true HTTP-level integration test — sign in as a real Supabase test user over the network, receive a real JWT, call a running `server.ts` instance's `/api/ai/*` endpoint with that token, and confirm it succeeds; then repeat with a garbage/expired token and confirm 401 — **could not be run from this build environment**, because its network sandbox does not permit outbound requests to `*.supabase.co` (the Supabase MCP connector used above operates through a different, database-level channel and cannot make GoTrue REST calls either). The unit/integration tests above verify the same logic paths with a mocked Supabase client instead, and the trigger verification above proves the database side live — but the literal "real browser JWT hits real running server" cycle described in the Phase 2 acceptance criteria still needs to run once from an environment with real network access (e.g., the deployed environment itself, or a local dev machine, or `supabase start`'s local stack). This is a known gap, not a claimed pass.
+  * Multi-device/multi-session revocation (`revokeOtherSessions()`) still operates on the local dbClient session list, which real Supabase-authenticated users no longer populate the same way demo users do — cross-device session listing/revocation for real accounts is not yet backed by Supabase's own session APIs. Flagged here as a known Phase 3 item, not silently left as a false "done."
+  * `capabilities`/`preferences`/`onboardingCompleted` are still sourced from the local dbClient/localStorage cache, not `public.users` — by design for this phase's scope (see migration file), but noted here again for visibility.
+
+
 
 ### 3. Authorization Status
 

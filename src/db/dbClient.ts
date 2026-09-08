@@ -1167,6 +1167,54 @@ export class DatabaseClient {
     return profiles.find((p) => p.userId === userId) || null;
   }
 
+  /**
+   * Read-model sync only -- NOT an authentication or registration path.
+   * Used by authService when a Supabase-authenticated identity has no
+   * matching local cache entry yet, so the rest of the app (which still
+   * reads through dbClient this phase) has something to render. Writes no
+   * password, credential, or session record; a genuinely new user is
+   * created and authenticated exclusively by Supabase Auth before this
+   * is ever called.
+   */
+  public upsertUserFromExternalIdentity(user: User): void {
+    const users = this.getUsers();
+    const idx = users.findIndex((u) => u.id === user.id);
+    if (idx >= 0) {
+      users[idx] = { ...users[idx], ...user };
+    } else {
+      users.push(user);
+    }
+    storageAdapter.setItem('users', users);
+  }
+
+  /**
+   * Read-model sync counterpart to upsertUserFromExternalIdentity() for the
+   * profile record. See that method's docstring -- same "no credentials
+   * involved" contract applies here.
+   */
+  public upsertUserProfileFromExternalIdentity(user: User): void {
+    const profiles = this.getProfiles();
+    const idx = profiles.findIndex((p) => p.userId === user.id);
+    const profile: UserProfile = {
+      userId: user.id,
+      headline: `${user.primaryRole?.replace('_', ' ')?.toUpperCase() || 'PROFESSIONAL'} in ${user.primaryCounty}`,
+      bio: 'New member of OpportunityHub Liberia.',
+      phone: user.phoneNumber,
+      county: user.primaryCounty,
+      skills: [],
+      visibility: 'public',
+      updatedAt: new Date().toISOString(),
+      capabilities: user.capabilities,
+      verificationState: 'unverified'
+    };
+    if (idx >= 0) {
+      profiles[idx] = { ...profiles[idx], ...profile };
+    } else {
+      profiles.push(profile);
+    }
+    storageAdapter.setItem('profiles', profiles);
+  }
+
   public updateUserProfile(
     userId: string,
     updates: Partial<UserProfile> & { fullName?: string; phoneNumber?: string },

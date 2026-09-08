@@ -2,6 +2,14 @@
  * Cryptographic and security primitives for OpportunityHub Liberia
  * Implements Web Crypto API (SHA-256) salted hashing, token generation,
  * password policy verification, and sensitive data sanitization.
+ *
+ * SCOPE (as of Phase 2 -- Supabase Auth migration):
+ * hashPassword()/verifyPassword() are used ONLY by src/db/dbClient.ts's
+ * opt-in local "demo mode" path (VITE_ENABLE_DEMO_MODE=true), never by
+ * src/services/authService.ts's real-user register/login/reset flows.
+ * Supabase Auth owns password storage and verification for real accounts;
+ * this app never hashes or compares a real user's password itself. Do not
+ * reintroduce a call to these from the Supabase-backed auth path.
  */
 
 export async function hashPassword(password: string, salt: string): Promise<string> {

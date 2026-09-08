@@ -22,6 +22,8 @@ interface AuthContextType {
   activeOrganization: Organization | null;
   token: string | null;
   isAuthenticated: boolean;
+  /** True only for the opt-in local demo-mode session. See AuthSession. */
+  isDemoMode: boolean;
   authContext: AuthorizationContext;
   login: (email: string, pass: string) => Promise<void>;
   register: (params: {
@@ -79,6 +81,23 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     logger.debug('AuthContext', `AuthProvider active for user ${session.user?.fullName || 'Guest'} (${session.activeRole})`);
   }, [session.user?.fullName, session.activeRole]);
 
+  // On mount: re-verify against the real Supabase session (the cached
+  // localStorage session is only an optimistic first paint), then keep
+  // listening for token refresh / expiry / external sign-out.
+  useEffect(() => {
+    let isMounted = true;
+    authService.restoreSupabaseSession().then((restored) => {
+      if (isMounted) setSession({ ...restored });
+    });
+    const unsubscribe = authService.onAuthStateChange((updated) => {
+      if (isMounted) setSession({ ...updated });
+    });
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
+  }, []);
+
   const login = useCallback(async (email: string, pass: string) => {
     const updated = await authService.login(email, pass);
     setSession({ ...updated });
@@ -116,7 +135,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, []);
 
   const verifyEmail = useCallback(async (token: string) => {
-    authService.verifyEmail(token);
+    await authService.verifyEmail(token);
     setSession({ ...authService.getSession() });
   }, []);
 
@@ -241,6 +260,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         authContext,
         token: session.token,
         isAuthenticated: session.isAuthenticated && !!session.user && (session.user.accountStatus === 'active' || session.user.accountStatus === 'pending_verification'),
+        isDemoMode: session.isDemoMode,
         login,
         register,
         logout,

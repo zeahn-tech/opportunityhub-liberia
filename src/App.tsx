@@ -44,6 +44,7 @@ import { RouterProvider, useRouter } from './routes/router';
 import { ErrorBoundary } from './core/errors/ErrorBoundary';
 import { OfflineBanner } from './pwa/OfflineBanner';
 import { AuthModal } from './components/auth/AuthModal';
+import { DemoModeBanner } from './components/auth/DemoModeBanner';
 import { OnboardingModal } from './components/auth/OnboardingModal';
 import { OpportunityCardSkeleton } from './design-system/Skeleton';
 import { db } from './db/dbClient';
@@ -343,6 +344,7 @@ function AppContent() {
   return (
     <div className="min-h-screen bg-[#F9F8F6] text-[#2D2D2D] font-sans flex flex-col pb-16 lg:pb-0">
       {/* Offline Status Alert */}
+      <DemoModeBanner />
       <OfflineBanner />
 
       {/* Main Navigation with Natural Tones palette */}
