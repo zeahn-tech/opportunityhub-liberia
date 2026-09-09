@@ -8,6 +8,8 @@
 
 > **Update — September 8, 2026 (Phase 2, Auth)**: Section 2 ("Authentication Status") below has been rewritten to reflect this phase's work migrating authentication to Supabase Auth as the sole source of identity/session truth. The original Section 2 text (SHA-256/local session store) is superseded and no longer accurate; it described the pre-Phase-2 local-auth implementation. The rest of this report reflects the state as of the original September 7 audit and has not been re-verified as part of this phase.
 
+> **Update — September 9, 2026 (Phase 3, dbClient → Supabase migration — IN PROGRESS, Service 1 of 9 complete)**: This phase moves each domain service off `src/db/dbClient.ts`'s local/localStorage store and onto real Supabase queries under RLS, one service at a time, per `docs/REMEDIATION_PHASES.md`'s ordering. Only **Service 1 (organizationService / memberships)** is complete and proven as of this update — see the new "Architecture Status" and "Database Status" notes below, and the full record in `docs/PHASE3_SERVICE1_VERIFICATION.md`. Services 2–9 (opportunityService, applicationService, candidateService, businessService, messagingService, verificationService, trustSafetyService, subscriptionService/notificationService/analyticsService) have **not** been started. The application still runs on `dbClient.ts`/`localStorage` for every domain besides the new `organizationService.ts` module itself, and `organizationService.ts` is not yet wired into its callers (`authService.ts`, `permissionEngine.ts`, and three components) — it exists, typechecks, is unit-tested, and is proven against live RLS, but nothing calls it yet. This is a deliberate stopping point, not an oversight: converting dbClient's synchronous local-store callers to the necessarily-async Supabase calls cascades through `AuthContext` and beyond, and doing that for one service at a time, verified, is exactly what this phase's acceptance criteria call for.
+
 ---
 
 ### Executive Summary
@@ -25,6 +27,8 @@ Following extensive test suite execution, deep code pattern checks, and input sa
   * Topology is structured around a mobile-first Progressive Web App (PWA) client communicating securely with a Node.js/Express server (binding exclusively to Port 3000 behind container ingress proxying).
   * Server-side routing is optimized, with asset-building cleanly bundle-compiled using Vite & esbuild (`dist/server.cjs` for production).
   * AI operations are fully decoupled from browser logic, utilizing a robust, secure backend model (`@google/genai` on `/api/ai/*`) proxying with server-secret API key resolution.
+
+* **Phase 3 update (September 9, 2026, in progress)**: `src/services/organizationService.ts` now exists as a new architectural layer — a Supabase-backed domain service that reads/writes `public.organizations` / `public.organization_memberships` through the anon/user-session client, with Postgres RLS (not client code) as the authorization boundary. It is complete and independently verified (see `docs/PHASE3_SERVICE1_VERIFICATION.md`) but **not yet wired into the running application** — `authService.ts`, `permissionEngine.ts`, and the org-related UI components still call `dbClient.ts`'s synchronous local store. The architecture is therefore mid-migration: one real Supabase-backed service exists and is proven, the other 8 planned services and all existing callers still point at `dbClient.ts`. Do not read this bullet as "Architecture Status: 100% Fully Implemented" being re-certified — that status line above describes the September 7 audit and has not been re-verified against the current, partially-migrated state.
 
 ---
 
@@ -133,7 +137,18 @@ Note: the project already contained some rows (4 organizations, 3 published oppo
 VERIFICATION FAILED (network/connectivity -- see above)
 ```
 
-**What is explicitly NOT done:**
+**Phase 3 update (September 9, 2026, in progress — supersedes point 1 below for organizationService only):**
+
+`src/services/organizationService.ts` is a new module, backed entirely by `public.organizations` / `public.organization_memberships` via the Supabase anon/user-session client. Per-service status:
+
+| Service | Status | Proof |
+|---|---|---|
+| organizationService / memberships | **Migrated, service-layer complete, not yet wired into callers** | `supabase/migrations/20260909130000_organization_service_backend.sql` applied live (success). 7/7 live RLS/RPC/owner-invariant-trigger checks passed via SQL-level role impersonation against the real project (`docs/PHASE3_SERVICE1_VERIFICATION.md`) — including a direct-write hijack attempt correctly rejected with `42501` and an owner-demotion/removal attempt correctly rejected with `23514`, entirely at the database level, independent of any application code. `src/tests/organizationService.test.ts` (7 tests, mocked-client, same rationale as `authServiceSupabase.test.ts`) covers the service's own query-building and error-translation. `npm run lint` (tsc) and `npm run build` both pass; `scripts/check-no-service-role-in-client.sh` passes clean against the new build. **Not done**: `authService.ts`, `permissionEngine.ts`, and 3 components (`OrganizationWizardModal.tsx`, `OrganizationSwitcher.tsx`, `PostOpportunityModal.tsx`) still call `dbClient.ts` for org/membership data — this service is not live in the running app yet. Organization invitations (no `organization_invitations` table exists) are also out of scope for this pass. |
+| opportunityService, applicationService, candidateService, businessService, messagingService, verificationService, trustSafetyService, subscriptionService, notificationService, analyticsService | **Not started** | Still 100% `dbClient.ts`/`localStorage`, unchanged from the September 7/8 state described below. |
+
+A concrete, previously-undocumented gap surfaced during this phase's live verification: the Phase 2 `auth.users` sync triggers cover row **creation** and **email-confirmation**, but there is no **deletion** sync trigger — deleting an `auth.users` row does not cascade-delete the matching `public.users` row. Recorded in `docs/PHASE3_SERVICE1_VERIFICATION.md`; not fixed here (out of scope for organizationService), flagged for whoever owns user-lifecycle handling next.
+
+**What is explicitly NOT done (original Phase 1/2 text, now accurate for every service except organizationService above):**
 
 1. The application (`src/services/*.ts`, `src/db/dbClient.ts`) has not been changed at all and does not use this backend. Every read/write in the running app still goes through `localStorage`. This is Phase 3, not this phase.
 2. No auth-bootstrapping trigger exists yet (e.g. a `handle_new_user`-style trigger on `auth.users` to populate `public.users` on signup) — `public.users` currently has no `authenticated`-role INSERT policy at all, matching the original schema. Something will need to create that row (client-side insert with a policy change, or a `SECURITY DEFINER` trigger, or service-role-mediated signup) before real user signup can work. This is a Phase 3 design decision, flagged here so it isn't a surprise.
