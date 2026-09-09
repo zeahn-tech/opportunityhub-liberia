@@ -175,9 +175,11 @@ OpportunityHub Liberia is a high-integrity digital opportunity and business exch
 4. `dbClient.test.ts` (5 tests): Relational storage adapter and tenant isolation checks.
 5. `services.test.ts` (4 tests): Service layer integration.
 6. `organizations.test.ts` (12 tests): Multi-organization governance and settings.
-7. `auth.test.ts` (19 tests): Authentication, session generation, and password hashing.
+7. `auth.test.ts` (19 tests): Local demo-mode account registration, session generation, and SHA-256 password hashing (`dbClient.ts`/`crypto.ts` demo path only — see below).
 8. `logger.test.ts` (2 tests): Structured logging and sensitive field redaction.
 9. `env.test.ts` (4 tests): Environment configuration and fallback validation.
+10. `authServiceSupabase.test.ts` (6 tests, added Phase 2): Proves `authService.ts`'s real register/login/logout flows call `supabase.auth.*` exclusively and never fall back to local password hashing/verification on a Supabase error.
+11. `authMiddleware.test.ts` (6 tests, added Phase 2): Proves `src/server/authMiddleware.ts` verifies real Supabase-issued JWTs via `supabase.auth.getUser(token)`, with local demo-session fallback only when explicitly enabled server-side. See `docs/PRODUCTION_CERTIFICATION_REPORT.md`'s "Authentication Status" section for what was verified live vs. what still needs a network-unrestricted environment.
 
 ---
 

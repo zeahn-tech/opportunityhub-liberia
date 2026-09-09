@@ -6,15 +6,15 @@ This document provides a comprehensive overview of the production-grade security
 
 ## 1. Authentication & Session Management
 
-OpportunityHub Liberia implements a multi-tiered session tracking and cryptographic authentication process spanning both the server-side Node.js environment and browser environments:
+> **Updated September 8, 2026 (Phase 2 — Supabase Auth migration)**: this section previously described a local, client-side password-hashing and in-process session-validation architecture. That architecture has been replaced; the description below reflects the current implementation. See `docs/PRODUCTION_CERTIFICATION_REPORT.md`'s "Authentication Status" section for exact verification evidence.
 
-- **Salted Password Hashing**: Users' passwords are processed using a deterministic cryptographic hashing and verification routine (`authService.ts`). Raw password strings are never stored or logged.
-- **Database-Validated Sessions**: Session tokens are cryptographically strong random identifiers. On every protected API request, the server invokes the central database engine (`dbClient.ts` -> `validateSession`) to perform dynamic validation:
-  - **Token Active Checks**: Ensures the session is explicitly set to `isValid: true`.
-  - **Expiration Sweeps**: Confirms the session timestamp has not exceeded active duration boundaries.
-  - **Account Status Validation**: Automatically revokes session validity and denies requests if the user's status is changed to `suspended` or `deactivated` in the database.
-  - **Activity Refreshing**: Automatically bumps the `lastActivityAt` timestamp on each validated call to keep live sessions current.
-- **Client Session Interceptors**: Browser clients fetch the current active session tokens dynamically via the `authService` and append them to the standard `Authorization: Bearer <token>` header on all requests made to backend endpoints.
+OpportunityHub Liberia uses **Supabase Auth** as the sole source of identity and session truth for real user accounts, spanning both the server-side Node.js environment and browser environments:
+
+- **Password Storage & Verification**: Supabase Auth owns password hashing and verification exclusively. The application (`src/services/authService.ts`) never hashes, stores, or compares a real user's password itself, and never falls back to a local credential check if Supabase is unreachable — a Supabase error is surfaced to the caller as a real error. The local SHA-256 salted-hashing routine in `src/core/security/crypto.ts` still exists, but is scoped and documented as demo-mode-only (`VITE_ENABLE_DEMO_MODE=true`, off by default in production — see `src/config/env.ts`), used exclusively by `src/db/dbClient.ts`'s opt-in local sample-account path.
+- **Server-Side Session Verification**: On every protected API request, the server (`src/server/authMiddleware.ts`, used by `server.ts`) calls `supabase.auth.getUser(token)` using the anon key, which asks Supabase itself to verify the token's signature and expiry against the live project. There is no local secret to keep in sync. A local `dbClient.ts -> validateSession` check is consulted **only** as an explicit, opt-in demo-mode fallback (`VITE_ENABLE_DEMO_MODE=true` set server-side) and **only after** Supabase itself has rejected the token — never silently, and never when Supabase is configured, reachable, and demo mode is off.
+- **Client Session Interceptors**: Browser clients hold the real Supabase `access_token` (obtained via `supabase.auth.signInWithPassword`/`signUp`) via `authService`, and append it as the standard `Authorization: Bearer <token>` header on all requests made to backend endpoints. `src/context/AuthContext.tsx` re-verifies against `supabase.auth.getSession()` on app load and subscribes to `supabase.auth.onAuthStateChange` for live token refresh, expiry, and cross-tab sign-out — rather than trusting a cached local session indefinitely.
+- **Profile Sync**: A `SECURITY DEFINER` Postgres trigger on `auth.users` (`supabase/migrations/20260908120000_sync_auth_users_to_public_users.sql`) populates the matching `public.users` row in the same transaction Supabase uses to create the identity, so RLS policies keyed on `auth.uid()` have a row to match against from the moment of signup.
+- **Demo Mode Visibility**: Whenever an active session is the local demo-mode path, `src/components/auth/DemoModeBanner.tsx` renders a persistent banner so it can never be mistaken for a real account.
 
 ---
 

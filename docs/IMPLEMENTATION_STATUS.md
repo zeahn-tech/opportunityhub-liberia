@@ -4,6 +4,8 @@
 
 All systems have successfully passed rigorous manual audits, automated test suites, typecheck constraints, code style guidelines, and security reviews.
 
+> **Update — September 8, 2026 (Phase 2, Auth)**: The "Authentication, Sessions & Security Hardening" section below predates the Supabase Auth migration and describes the local session-store architecture that was in place at the time. It has been superseded by `src/services/authService.ts` (Supabase-exclusive register/login/logout/reset/verify, no local fallback) and `src/server/authMiddleware.ts` (real `supabase.auth.getUser(token)` verification). See `docs/PRODUCTION_CERTIFICATION_REPORT.md`'s "Authentication Status" section for the current, verified state and exact evidence. Test count below (82) is also stale — the suite is now 95 tests across 12 files after this phase's additions.
+
 ---
 
 ## 🛡️ 1. Authentication, Sessions & Security Hardening
