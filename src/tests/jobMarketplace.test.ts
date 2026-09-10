@@ -1,290 +1,315 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { opportunityService } from '../services/opportunityService';
 import { authService } from '../services/authService';
 import { db } from '../db/dbClient';
 import { Opportunity } from '../types';
 
-describe('Job Marketplace Core Workflows & Lifecycle Tests', () => {
+/**
+ * This file used to call opportunityService.* directly. As of Phase 3,
+ * Service 2 of the dbClient -> Supabase migration
+ * (docs/PRODUCTION_CERTIFICATION_REPORT.md), opportunityService.ts no
+ * longer touches dbClient.ts at all -- it reads/writes Supabase exclusively
+ * (see src/tests/opportunityService.test.ts for its mocked-Supabase-client
+ * coverage, and docs/PHASE3_SERVICE2_VERIFICATION.md for the live RLS
+ * proof). Calling opportunityService from here would just throw
+ * "Supabase is not configured" in this test environment.
+ *
+ * The lifecycle/isolation/expiry behavior this file exercises is still
+ * real and still worth testing -- it's just dbClient.ts's own behavior now
+ * (the local-demo-mode data layer that Phase 3's plan explicitly keeps
+ * around), not opportunityService's. So this file was retargeted to call
+ * `db.*` directly, the same pattern src/tests/auth.test.ts already used
+ * for db.registerUser/db.authenticateUser before Phase 2 touched
+ * authService.
+ *
+ * Two tests from the original file were dropped here, not silently lost:
+ *   - Multi-parameter filter-building ("filters opportunities by...") is
+ *     now Supabase query-construction logic with no dbClient equivalent --
+ *     covered instead by opportunityService.test.ts's
+ *     "getOpportunities(): applies filters onto the query builder" test.
+ *   - Auto-expiry is intentionally NOT reproduced as a write-on-read side
+ *     effect in the new Supabase-backed service (a generic reader wouldn't
+ *     have UPDATE rights under RLS to write that expiry back) -- see
+ *     opportunityService.ts's own header comment for the "effective
+ *     status computed at read time, not persisted" design decision, and
+ *     opportunityService.test.ts's expiry-computation test. The
+ *     dbClient.expireOverdueOpportunities() local-store behavior itself
+ *     is retained below since demo mode still uses it.
+ */
+describe('Job Marketplace Core Workflows & Lifecycle Tests (local demo-mode data layer -- dbClient.ts)', () => {
   beforeEach(() => {
     db.resetToSeedDefaults();
     // Default to authorized employer (Save the Children Liberia, org-save-children)
     authService.loginAsRoleForTest('employer');
   });
 
-  it('allows an authorized employer to create a job in draft state', async () => {
+  function baseOppInput(
+    overrides: Partial<Omit<Opportunity, 'id' | 'viewsCount' | 'applicationsCount' | 'postedDate'>> & {
+      title: string;
+      description: string;
+    }
+  ): Omit<Opportunity, 'id' | 'viewsCount' | 'applicationsCount' | 'postedDate'> {
+    const session = authService.getSession();
+    const orgId = session.activeOrganization!.id;
+    return {
+      organizationId: orgId,
+      organization: session.activeOrganization!,
+      slug: overrides.slug || overrides.title.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+      type: overrides.type || 'job',
+      workplaceModel: overrides.workplaceModel || 'on_site',
+      county: overrides.county || 'Montserrado',
+      locationDetails: overrides.locationDetails || 'Monrovia',
+      currency: overrides.currency || 'USD',
+      isSalaryNegotiable: overrides.isSalaryNegotiable ?? true,
+      isSalaryConfidential: overrides.isSalaryConfidential ?? false,
+      summary: overrides.summary || overrides.description.slice(0, 150),
+      responsibilities: overrides.responsibilities || [],
+      requirements: overrides.requirements || [],
+      skills: overrides.skills || [],
+      deadline: overrides.deadline || '2026-12-31',
+      openingsCount: overrides.openingsCount || 1,
+      isFeatured: overrides.isFeatured ?? false,
+      status: overrides.status || 'draft',
+      ...overrides
+    };
+  }
+
+  it('allows an authorized employer to create a job in draft state', () => {
     const session = authService.getSession();
     const orgId = session.activeOrganization!.id;
 
-    const res = await opportunityService.createDraft({
-      title: 'Community Health Extension Coordinator',
-      slug: 'community-health-extension-coordinator',
-      type: 'job',
-      employmentType: 'full_time',
-      workplaceModel: 'on_site',
-      county: 'Nimba',
-      locationDetails: 'Sanniquellie District, Nimba County',
-      salaryMin: 1200,
-      salaryMax: 1800,
-      currency: 'USD',
-      isSalaryNegotiable: true,
-      isSalaryConfidential: false,
-      summary: 'Coordinate grassroots maternal and child health interventions across Nimba County.',
-      description: 'Full overview of community health extension operations in rural Nimba.',
-      responsibilities: ['Mobilize district health officers', 'Manage medical supply distribution'],
-      requirements: ['BSc in Public Health or Nursing', '3+ years field experience'],
-      skills: ['Public Health', 'Maternal Care', 'Community Mobilization'],
-      deadline: '2026-11-30',
-      openingsCount: 2,
-      isFeatured: false
-    });
+    const opp = db.createOpportunity(
+      baseOppInput({
+        title: 'Community Health Extension Coordinator',
+        employmentType: 'full_time',
+        county: 'Nimba',
+        locationDetails: 'Sanniquellie District, Nimba County',
+        salaryMin: 1200,
+        salaryMax: 1800,
+        description: 'Full overview of community health extension operations in rural Nimba.',
+        responsibilities: ['Mobilize district health officers', 'Manage medical supply distribution'],
+        requirements: ['BSc in Public Health or Nursing', '3+ years field experience'],
+        skills: ['Public Health', 'Maternal Care', 'Community Mobilization'],
+        deadline: '2026-11-30',
+        openingsCount: 2,
+        status: 'draft'
+      }),
+      session.user.id
+    );
 
-    expect(res.status).toBe(200);
-    expect(res.data).toBeDefined();
-    expect(res.data!.status).toBe('draft');
-    expect(res.data!.organizationId).toBe(orgId);
-    expect(res.data!.county).toBe('Nimba');
-    expect(res.data!.employmentType).toBe('full_time');
-    expect(res.data!.workplaceModel).toBe('on_site');
+    expect(opp).toBeDefined();
+    expect(opp.status).toBe('draft');
+    expect(opp.organizationId).toBe(orgId);
+    expect(opp.county).toBe('Nimba');
+    expect(opp.employmentType).toBe('full_time');
+    expect(opp.workplaceModel).toBe('on_site');
   });
 
-  it('allows an authorized employer to publish a draft opportunity', async () => {
-    const draftRes = await opportunityService.createDraft({
-      title: 'Water & Sanitation Engineer',
-      slug: 'water-sanitation-engineer',
-      type: 'job',
-      workplaceModel: 'hybrid',
-      county: 'Grand Bassa',
-      locationDetails: 'Buchanan City',
-      description: 'WASH infrastructure implementation.',
-      deadline: '2026-12-15'
-    });
+  it('allows an authorized employer to publish a draft opportunity', () => {
+    const session = authService.getSession();
+    const draft = db.createOpportunity(
+      baseOppInput({
+        title: 'Water & Sanitation Engineer',
+        workplaceModel: 'hybrid',
+        county: 'Grand Bassa',
+        locationDetails: 'Buchanan City',
+        description: 'WASH infrastructure implementation.',
+        deadline: '2026-12-15',
+        status: 'draft'
+      }),
+      session.user.id
+    );
+    expect(draft.status).toBe('draft');
 
-    const draftId = draftRes.data!.id;
-    expect(draftRes.data!.status).toBe('draft');
+    const published = db.updateOpportunity(
+      draft.id,
+      { status: 'published', postedDate: new Date().toISOString().split('T')[0] },
+      session.activeOrganization!.id,
+      session.user.id
+    );
+    expect(published.status).toBe('published');
 
-    // Publish the draft
-    const publishRes = await opportunityService.publish(draftId);
-    expect(publishRes.status).toBe(200);
-    expect(publishRes.data!.status).toBe('published');
-
-    // Verify it appears in public published listings
-    const publicList = await opportunityService.list({ status: 'published' });
-    const found = publicList.data!.find((o) => o.id === draftId);
+    const found = db.getOpportunities().find((o) => o.id === draft.id);
     expect(found).toBeDefined();
     expect(found!.status).toBe('published');
   });
 
-  it('allows an authorized employer to edit an existing job vacancy', async () => {
-    const createRes = await opportunityService.publish({
-      title: 'Solar Energy Technician',
-      slug: 'solar-energy-technician',
-      type: 'job',
-      workplaceModel: 'on_site',
-      county: 'Bong',
-      locationDetails: 'Gbarnga',
-      description: 'Solar panel microgrid installer.',
-      salaryMin: 800,
-      salaryMax: 1200,
-      deadline: '2026-10-31'
-    });
+  it('allows an authorized employer to edit an existing job vacancy', () => {
+    const session = authService.getSession();
+    const created = db.createOpportunity(
+      baseOppInput({
+        title: 'Solar Energy Technician',
+        county: 'Bong',
+        locationDetails: 'Gbarnga',
+        description: 'Solar panel microgrid installer.',
+        salaryMin: 800,
+        salaryMax: 1200,
+        deadline: '2026-10-31',
+        status: 'published'
+      }),
+      session.user.id
+    );
 
-    const oppId = createRes.data!.id;
+    const edited = db.updateOpportunity(
+      created.id,
+      {
+        title: 'Senior Solar Microgrid Lead Engineer',
+        salaryMin: 1500,
+        salaryMax: 2200,
+        workplaceModel: 'hybrid',
+        skills: ['Photovoltaics', 'Inverter Systems', 'High Voltage Safety']
+      },
+      session.activeOrganization!.id,
+      session.user.id
+    );
 
-    // Edit the opportunity
-    const editRes = await opportunityService.update(oppId, {
-      title: 'Senior Solar Microgrid Lead Engineer',
-      salaryMin: 1500,
-      salaryMax: 2200,
-      workplaceModel: 'hybrid',
-      skills: ['Photovoltaics', 'Inverter Systems', 'High Voltage Safety']
-    });
-
-    expect(editRes.status).toBe(200);
-    expect(editRes.data!.title).toBe('Senior Solar Microgrid Lead Engineer');
-    expect(editRes.data!.salaryMin).toBe(1500);
-    expect(editRes.data!.salaryMax).toBe(2200);
-    expect(editRes.data!.workplaceModel).toBe('hybrid');
-    expect(editRes.data!.skills).toContain('Photovoltaics');
+    expect(edited.title).toBe('Senior Solar Microgrid Lead Engineer');
+    expect(edited.salaryMin).toBe(1500);
+    expect(edited.salaryMax).toBe(2200);
+    expect(edited.workplaceModel).toBe('hybrid');
+    expect(edited.skills).toContain('Photovoltaics');
   });
 
-  it('allows an employer to unpublish a live job back to draft', async () => {
-    const pubRes = await opportunityService.publish({
-      title: 'Agricultural Value Chain Specialist',
-      slug: 'agri-specialist',
-      type: 'job',
-      workplaceModel: 'on_site',
-      county: 'Lofa',
-      locationDetails: 'Voinjama',
-      description: 'Cocoa and palm oil cooperative development.',
-      deadline: '2026-12-01'
-    });
+  it('allows an employer to unpublish a live job back to draft', () => {
+    const session = authService.getSession();
+    const published = db.createOpportunity(
+      baseOppInput({
+        title: 'Agricultural Value Chain Specialist',
+        county: 'Lofa',
+        locationDetails: 'Voinjama',
+        description: 'Cocoa and palm oil cooperative development.',
+        deadline: '2026-12-01',
+        status: 'published'
+      }),
+      session.user.id
+    );
 
-    const oppId = pubRes.data!.id;
-    const unpublishRes = await opportunityService.unpublishToDraft(oppId);
+    const unpublished = db.updateOpportunity(
+      published.id,
+      { status: 'draft' },
+      session.activeOrganization!.id,
+      session.user.id
+    );
+    expect(unpublished.status).toBe('draft');
 
-    expect(unpublishRes.status).toBe(200);
-    expect(unpublishRes.data!.status).toBe('draft');
-
-    // Public list should not show the draft
-    const publicList = await opportunityService.list({ status: 'published' });
-    const found = publicList.data!.find((o) => o.id === oppId);
-    expect(found).toBeUndefined();
+    const stillPublished = db.getOpportunities().filter((o) => o.status === 'published');
+    expect(stillPublished.find((o) => o.id === published.id)).toBeUndefined();
   });
 
-  it('allows an employer to close a vacancy', async () => {
-    const pubRes = await opportunityService.publish({
-      title: 'Grant Compliance Officer',
-      slug: 'grant-compliance-officer',
-      type: 'job',
-      workplaceModel: 'hybrid',
-      county: 'Montserrado',
-      locationDetails: 'Monrovia',
-      description: 'Manage USAID and EU grant reporting.',
-      deadline: '2026-11-15'
-    });
+  it('allows an employer to close a vacancy', () => {
+    const session = authService.getSession();
+    const published = db.createOpportunity(
+      baseOppInput({
+        title: 'Grant Compliance Officer',
+        workplaceModel: 'hybrid',
+        locationDetails: 'Monrovia',
+        description: 'Manage USAID and EU grant reporting.',
+        deadline: '2026-11-15',
+        status: 'published'
+      }),
+      session.user.id
+    );
 
-    const oppId = pubRes.data!.id;
-    const closeRes = await opportunityService.close(oppId);
-
-    expect(closeRes.status).toBe(200);
-    expect(closeRes.data!.status).toBe('closed');
+    const closed = db.updateOpportunity(
+      published.id,
+      { status: 'closed' },
+      session.activeOrganization!.id,
+      session.user.id
+    );
+    expect(closed.status).toBe('closed');
   });
 
-  it('allows an employer to duplicate an opportunity as a draft', async () => {
-    const origRes = await opportunityService.publish({
-      title: 'Regional Field Monitor',
-      slug: 'regional-field-monitor',
-      type: 'job',
-      workplaceModel: 'on_site',
-      county: 'Maryland',
-      locationDetails: 'Harper City',
-      description: 'Monitor program execution in southeastern counties.',
-      salaryMin: 900,
-      deadline: '2026-10-15'
-    });
+  it('allows an employer to duplicate an opportunity as a draft', () => {
+    const session = authService.getSession();
+    const original = db.createOpportunity(
+      baseOppInput({
+        title: 'Regional Field Monitor',
+        county: 'Maryland',
+        locationDetails: 'Harper City',
+        description: 'Monitor program execution in southeastern counties.',
+        salaryMin: 900,
+        deadline: '2026-10-15',
+        status: 'published'
+      }),
+      session.user.id
+    );
 
-    const dupRes = await opportunityService.duplicate(origRes.data!.id);
-    expect(dupRes.status).toBe(200);
-    expect(dupRes.data!.title).toBe('Regional Field Monitor (Copy)');
-    expect(dupRes.data!.status).toBe('draft');
-    expect(dupRes.data!.county).toBe('Maryland');
-    expect(dupRes.data!.id).not.toBe(origRes.data!.id);
+    const copy = db.createOpportunity(
+      baseOppInput({
+        title: `${original.title} (Copy)`,
+        slug: `${original.slug}-copy-${Math.random().toString(36).substring(2, 6)}`,
+        county: original.county,
+        locationDetails: original.locationDetails,
+        description: original.description,
+        status: 'draft'
+      }),
+      session.user.id
+    );
+
+    expect(copy.title).toBe('Regional Field Monitor (Copy)');
+    expect(copy.status).toBe('draft');
+    expect(copy.county).toBe('Maryland');
+    expect(copy.id).not.toBe(original.id);
   });
 
-  it('allows an employer to permanently delete an authorized job', async () => {
-    const oppRes = await opportunityService.createDraft({
-      title: 'Temporary Data Collector',
-      slug: 'temp-data-collector',
-      type: 'job',
-      workplaceModel: 'on_site',
-      county: 'Margibi',
-      locationDetails: 'Kakata',
-      description: 'Household survey collection.'
-    });
+  it('allows an employer to permanently delete an authorized job', () => {
+    const session = authService.getSession();
+    const created = db.createOpportunity(
+      baseOppInput({
+        title: 'Temporary Data Collector',
+        locationDetails: 'Kakata',
+        county: 'Margibi',
+        description: 'Household survey collection.',
+        status: 'draft'
+      }),
+      session.user.id
+    );
 
-    const oppId = oppRes.data!.id;
-    const delRes = await opportunityService.delete(oppId);
-    expect(delRes.status).toBe(200);
-
-    const checkRes = await opportunityService.getById(oppId);
-    expect(checkRes.data).toBeNull();
+    db.deleteOpportunity(created.id, session.activeOrganization!.id, session.user.id);
+    expect(db.getOpportunityById(created.id)).toBeNull();
   });
 
-  it('enforces multi-tenant isolation: Employer cannot edit or delete opportunities from another organization', async () => {
+  it('enforces multi-tenant isolation: Employer cannot edit or delete opportunities from another organization', () => {
     // Switch to Kofa Technologies (service_provider)
     authService.loginAsRoleForTest('service_provider');
     const contractorSession = authService.getSession();
     expect(contractorSession.activeOrganization!.id).toBe('org-kofa-tech');
 
     // Attempt to edit Save the Children's opportunity ('opp-1')
-    const unauthorizedEdit = await opportunityService.update('opp-1', {
-      title: 'Hacked Opportunity Title'
-    });
-
-    expect(unauthorizedEdit.status).toBe(403);
-    expect(unauthorizedEdit.error?.message).toContain('Cross-tenant access violation');
+    expect(() =>
+      db.updateOpportunity(
+        'opp-1',
+        { title: 'Hacked Opportunity Title' },
+        contractorSession.activeOrganization!.id,
+        contractorSession.user.id
+      )
+    ).toThrow(/Cross-tenant access violation/);
 
     // Attempt to delete Save the Children's opportunity ('opp-1')
-    const unauthorizedDelete = await opportunityService.delete('opp-1');
-    expect(unauthorizedDelete.status).toBe(403);
-    expect(unauthorizedDelete.error?.message).toContain('Cross-tenant access violation');
+    expect(() =>
+      db.deleteOpportunity('opp-1', contractorSession.activeOrganization!.id, contractorSession.user.id)
+    ).toThrow(/Cross-tenant access violation/);
   });
 
-  it('filters opportunities by multi-parameter criteria (County, Employment Type, Workplace Model, Salary)', async () => {
-    // Seed test jobs with diverse parameters
-    await opportunityService.publish({
-      title: 'Remote Full-Stack Developer',
-      slug: 'remote-full-stack-dev',
-      type: 'job',
-      employmentType: 'full_time',
-      workplaceModel: 'remote',
-      county: 'Montserrado',
-      locationDetails: 'Monrovia / Remote',
-      salaryMin: 2500,
-      salaryMax: 4000,
-      currency: 'USD',
-      description: 'React and Node development.',
-      skills: ['React', 'TypeScript', 'Node.js']
-    });
-
-    await opportunityService.publish({
-      title: 'On-Site Forestry Supervisor',
-      slug: 'forestry-supervisor',
-      type: 'job',
-      employmentType: 'contract',
-      workplaceModel: 'on_site',
-      county: 'Sinoe',
-      locationDetails: 'Greenville',
-      salaryMin: 900,
-      salaryMax: 1400,
-      currency: 'USD',
-      description: 'Forest conservation monitoring.',
-      skills: ['Forestry', 'GPS Mapping']
-    });
-
-    // Filter 1: Remote workplace model
-    const remoteList = await opportunityService.list({ workplaceModel: 'remote' });
-    expect(remoteList.data!.length).toBeGreaterThanOrEqual(1);
-    remoteList.data!.forEach((o) => expect(o.workplaceModel).toBe('remote'));
-
-    // Filter 2: County = Sinoe
-    const sinoeList = await opportunityService.list({ county: 'Sinoe' });
-    expect(sinoeList.data!.length).toBeGreaterThanOrEqual(1);
-    sinoeList.data!.forEach((o) => expect(o.county).toBe('Sinoe'));
-
-    // Filter 3: Min Salary >= 2000
-    const highSalaryList = await opportunityService.list({ minSalary: 2000 });
-    expect(highSalaryList.data!.length).toBeGreaterThanOrEqual(1);
-    highSalaryList.data!.forEach((o) => expect(o.salaryMin).toBeGreaterThanOrEqual(2000));
-
-    // Filter 4: Keyword Search
-    const searchList = await opportunityService.list({ query: 'Forestry' });
-    expect(searchList.data!.length).toBeGreaterThanOrEqual(1);
-    expect(searchList.data![0].title).toContain('Forestry');
-  });
-
-  it('automatically detects and transitions expired opportunities', async () => {
-    // Create opportunity with past deadline
+  it('dbClient.expireOverdueOpportunities() transitions overdue published opportunities to expired', () => {
+    const session = authService.getSession();
     const pastDate = new Date();
     pastDate.setDate(pastDate.getDate() - 5);
     const pastDateStr = pastDate.toISOString().split('T')[0];
 
-    const expiredOpp = await opportunityService.publish({
-      title: 'Past Tenders Submission',
-      slug: 'past-tenders-submission',
-      type: 'tender',
-      workplaceModel: 'on_site',
-      county: 'Montserrado',
-      locationDetails: 'Monrovia',
-      description: 'Historic tender.',
-      deadline: pastDateStr
-    });
+    const opp = db.createOpportunity(
+      baseOppInput({
+        title: 'Past Tenders Submission',
+        type: 'tender',
+        locationDetails: 'Monrovia',
+        description: 'Historic tender.',
+        deadline: pastDateStr,
+        status: 'published'
+      }),
+      session.user.id
+    );
 
-    expect(expiredOpp.data).toBeDefined();
-
-    // Query through service list which triggers expireOverdueOpportunities
-    const oppDetails = await opportunityService.getById(expiredOpp.data!.id);
-    expect(oppDetails.status).toBe(200);
-    expect(oppDetails.data!.status).toBe('expired');
+    const expiredCount = db.expireOverdueOpportunities();
+    expect(expiredCount).toBeGreaterThanOrEqual(1);
+    expect(db.getOpportunityById(opp.id)!.status).toBe('expired');
   });
 });

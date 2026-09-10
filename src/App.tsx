@@ -70,10 +70,7 @@ function AppContent() {
   const [minSalary, setMinSalary] = useState('');
   const [isLoadingFeed, setIsLoadingFeed] = useState(false);
 
-  const [opportunities, setOpportunities] = useState<Opportunity[]>(() => {
-    db.expireOverdueOpportunities();
-    return db.getOpportunities();
-  });
+  const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
   const [businesses, setBusinesses] = useState<BusinessListing[]>(() => db.getBusinesses());
   const [audits, setAudits] = useState<VerificationAudit[]>(() => db.getVerificationAudits());
   const [applications, setApplications] = useState<Application[]>(() => {
@@ -118,10 +115,24 @@ function AppContent() {
   const [isPostModalOpen, setIsPostModalOpen] = useState(false);
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
 
+  // Opportunities now live in Supabase (Phase 3, Service 2 -- see
+  // docs/PHASE3_SERVICE2_VERIFICATION.md); refreshOpportunities() is the
+  // single place that re-fetches the list through opportunityService
+  // (which respects RLS) after any mutation, replacing the old synchronous
+  // db.getOpportunities() reads that were left pointing at a store the
+  // mutations no longer write to.
+  const refreshOpportunities = async () => {
+    const res = await opportunityService.list();
+    if (res.data) {
+      setOpportunities(res.data);
+    } else if (res.error) {
+      showToast(res.error.message, 'error');
+    }
+  };
+
   // All useEffect hooks
   useEffect(() => {
-    db.expireOverdueOpportunities();
-    setOpportunities(db.getOpportunities());
+    refreshOpportunities();
   }, []);
 
   // Active Tab synchronized with route path
@@ -203,7 +214,7 @@ function AppContent() {
       // Edit existing opportunity
       const res = await opportunityService.update(editId, payload);
       if (res.data) {
-        setOpportunities(db.getOpportunities());
+        await refreshOpportunities();
         showToast(`Opportunity "${res.data.title}" updated successfully!`, 'success');
       } else if (res.error) {
         showToast(res.error.message, 'error');
@@ -213,7 +224,7 @@ function AppContent() {
       if (isDraft) {
         const res = await opportunityService.createDraft(payload);
         if (res.data) {
-          setOpportunities(db.getOpportunities());
+          await refreshOpportunities();
           showToast(`Opportunity saved as draft.`, 'success');
         } else if (res.error) {
           showToast(res.error.message, 'error');
@@ -221,7 +232,7 @@ function AppContent() {
       } else {
         const res = await opportunityService.publish(payload);
         if (res.data) {
-          setOpportunities(db.getOpportunities());
+          await refreshOpportunities();
           showToast(`Opportunity "${res.data.title}" is now published across Liberia!`, 'success');
         } else if (res.error) {
           showToast(res.error.message, 'error');
@@ -234,7 +245,7 @@ function AppContent() {
   const handlePublishDraft = async (id: string) => {
     const res = await opportunityService.publish(id);
     if (res.data) {
-      setOpportunities(db.getOpportunities());
+      await refreshOpportunities();
     } else if (res.error) {
       throw new Error(res.error.message);
     }
@@ -243,7 +254,7 @@ function AppContent() {
   const handleUnpublishDraft = async (id: string) => {
     const res = await opportunityService.unpublishToDraft(id);
     if (res.data) {
-      setOpportunities(db.getOpportunities());
+      await refreshOpportunities();
     } else if (res.error) {
       throw new Error(res.error.message);
     }
@@ -252,7 +263,7 @@ function AppContent() {
   const handleCloseOpportunity = async (id: string) => {
     const res = await opportunityService.close(id);
     if (res.data) {
-      setOpportunities(db.getOpportunities());
+      await refreshOpportunities();
     } else if (res.error) {
       throw new Error(res.error.message);
     }
@@ -261,7 +272,7 @@ function AppContent() {
   const handleDeleteOpportunity = async (id: string) => {
     const res = await opportunityService.delete(id);
     if (!res.error) {
-      setOpportunities(db.getOpportunities());
+      await refreshOpportunities();
     } else {
       throw new Error(res.error.message);
     }
@@ -270,7 +281,7 @@ function AppContent() {
   const handleDuplicateOpportunity = async (id: string) => {
     const res = await opportunityService.duplicate(id);
     if (res.data) {
-      setOpportunities(db.getOpportunities());
+      await refreshOpportunities();
     } else if (res.error) {
       throw new Error(res.error.message);
     }
@@ -335,9 +346,9 @@ function AppContent() {
     }
   };
 
-  const handleApplySuccess = (oppId: string, applicantName: string) => {
+  const handleApplySuccess = async (oppId: string, applicantName: string) => {
     setApplications(db.getApplications());
-    setOpportunities(db.getOpportunities());
+    await refreshOpportunities();
     showToast(`Application for ${applicantName} submitted successfully! You can track status in Candidate Portal.`, 'success');
   };
 
@@ -415,8 +426,8 @@ function AppContent() {
                 onResultsUpdated={(ranked) => {
                   setOpportunities(ranked);
                 }}
-                onClearSearch={() => {
-                  setOpportunities(db.getOpportunities());
+                onClearSearch={async () => {
+                  await refreshOpportunities();
                 }}
               />
 

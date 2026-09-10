@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { db } from '../db/dbClient';
 import { authService } from '../services/authService';
-import { opportunityService } from '../services/opportunityService';
 import { applicationService } from '../services/applicationService';
 import { businessService } from '../services/businessService';
 import { OrgRole, OrgPermission, OrganizationSubscription } from '../types';
