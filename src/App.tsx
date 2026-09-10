@@ -73,41 +73,7 @@ function AppContent() {
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
   const [businesses, setBusinesses] = useState<BusinessListing[]>(() => db.getBusinesses());
   const [audits, setAudits] = useState<VerificationAudit[]>(() => db.getVerificationAudits());
-  const [applications, setApplications] = useState<Application[]>(() => {
-    const apps = db.getApplications();
-    if (apps.length === 0) {
-      const initialApp1: Application = {
-        id: 'app-seed-1',
-        opportunityId: 'opp-1',
-        opportunityTitle: 'Senior Logistics & Supply Chain Manager',
-        organizationName: 'Save the Children Liberia',
-        applicantName: 'Tamba Kollie',
-        applicantEmail: 'tamba.kollie@gmail.com',
-        applicantPhone: '+231 77 554 9912',
-        stage: 'shortlisted',
-        appliedDate: '2026-09-03',
-        coverNote: 'Former fleet manager at Monrovia Breweries with 7 years of supply chain leadership.',
-        matchScore: 94
-      };
-      const initialApp2: Application = {
-        id: 'app-seed-2',
-        opportunityId: 'opp-2',
-        opportunityTitle: 'Highway Maintenance Culvert Construction Tender',
-        organizationName: 'Ministry of Public Works',
-        applicantName: 'Ganta Civil Construction Ltd (Eng. Sumo)',
-        applicantEmail: 'info@gantacivil.lr',
-        applicantPhone: '+231 88 612 0041',
-        stage: 'under_review',
-        appliedDate: '2026-09-04',
-        coverNote: 'Registered Class A contractor with complete earthmoving fleet based in Ganta.',
-        matchScore: 91
-      };
-      db.createApplication(initialApp1);
-      db.createApplication(initialApp2);
-      return [initialApp1, initialApp2];
-    }
-    return apps;
-  });
+  const [applications, setApplications] = useState<Application[]>([]);
 
   const [savedOpportunityIds, setSavedOpportunityIds] = useState<string[]>([]);
   const [selectedOpportunity, setSelectedOpportunity] = useState<Opportunity | null>(null);
@@ -130,9 +96,26 @@ function AppContent() {
     }
   };
 
+  // Applications now live in Supabase too (Phase 3, Service 3 -- see
+  // docs/PHASE3_SERVICE3_VERIFICATION.md). listByOrganization() with no
+  // explicit org id falls back to the caller's session.activeOrganization
+  // internally, and RLS narrows the result appropriately either way: an
+  // employer sees their org's pipeline, a candidate with no org sees only
+  // their own applications (via the "Candidates can view their own
+  // applications" policy), and a signed-out visitor sees nothing.
+  const refreshApplications = async () => {
+    const res = await applicationService.listByOrganization();
+    if (res.data) {
+      setApplications(res.data);
+    } else if (res.error) {
+      showToast(res.error.message, 'error');
+    }
+  };
+
   // All useEffect hooks
   useEffect(() => {
     refreshOpportunities();
+    refreshApplications();
   }, []);
 
   // Active Tab synchronized with route path
@@ -339,7 +322,7 @@ function AppContent() {
   ) => {
     const res = await applicationService.updateStage(appId, newStage, options);
     if (res.data) {
-      setApplications(db.getApplications());
+      await refreshApplications();
       showToast(`Candidate stage updated to "${newStage.replace('_', ' ').toUpperCase()}".`);
     } else if (res.error) {
       showToast(res.error.message, 'error');
@@ -347,7 +330,7 @@ function AppContent() {
   };
 
   const handleApplySuccess = async (oppId: string, applicantName: string) => {
-    setApplications(db.getApplications());
+    await refreshApplications();
     await refreshOpportunities();
     showToast(`Application for ${applicantName} submitted successfully! You can track status in Candidate Portal.`, 'success');
   };

@@ -1,10 +1,23 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { candidateService } from '../services/candidateService';
-import { applicationService } from '../services/applicationService';
 import { authService } from '../services/authService';
 import { db } from '../db/dbClient';
 import { CandidateProfile } from '../types';
 
+/**
+ * The "Application Submission", "Recruiter Pipeline", and evaluation tests
+ * below used to call applicationService directly. As of Phase 3, Service 3
+ * (see docs/PRODUCTION_CERTIFICATION_REPORT.md and
+ * docs/PHASE3_SERVICE3_VERIFICATION.md), applicationService.ts reads/writes
+ * Supabase exclusively and no longer touches dbClient.ts -- see
+ * src/tests/applicationService.test.ts for its mocked-Supabase-client
+ * coverage and the verification doc for the live RLS/trigger proof.
+ * Those tests were retargeted to call `db.*` directly, the same pattern
+ * already used for jobMarketplace.test.ts (opportunityService, Service 2)
+ * -- this is dbClient's own local-demo-mode behavior now, not
+ * applicationService's. candidateService.* calls are untouched (that
+ * domain hasn't been migrated yet -- Service 4).
+ */
 describe('Candidate Profile & Application Management System Tests', () => {
   beforeEach(() => {
     db.resetToSeedDefaults();
@@ -133,35 +146,36 @@ describe('Candidate Profile & Application Management System Tests', () => {
       authService.loginAsRoleForTest('job_seeker');
       const session = authService.getSession();
 
-      const applyRes = await applicationService.submit({
-        opportunityId: 'opp-1',
-        opportunityTitle: 'Senior Logistics & Supply Chain Manager',
-        organizationId: 'org-save-children',
-        organizationName: 'Save the Children Liberia',
-        candidateUserId: session.user.id,
-        applicantName: session.user.fullName || 'Tamba Kollie',
-        applicantEmail: session.user.email,
-        applicantPhone: '+231 77 554 9912',
-        applicantLocation: 'Montserrado',
-        coverNote: 'Experienced humanitarian logistics professional ready to lead operations.',
-        screeningAnswers: {
-          0: 'Yes, over 8 years managing humanitarian vehicle fleets in Liberia.',
-          1: 'I hold an advanced APICS supply chain credential.'
+      const applyRes = db.createApplication(
+        {
+          opportunityId: 'opp-1',
+          opportunityTitle: 'Senior Logistics & Supply Chain Manager',
+          organizationId: 'org-save-children',
+          organizationName: 'Save the Children Liberia',
+          candidateUserId: session.user.id,
+          applicantName: session.user.fullName || 'Tamba Kollie',
+          applicantEmail: session.user.email,
+          applicantPhone: '+231 77 554 9912',
+          applicantLocation: 'Montserrado',
+          coverNote: 'Experienced humanitarian logistics professional ready to lead operations.',
+          screeningAnswers: {
+            0: 'Yes, over 8 years managing humanitarian vehicle fleets in Liberia.',
+            1: 'I hold an advanced APICS supply chain credential.'
+          },
+          resumeUrl: 'data:application/pdf;base64,JVBERi0xLjc...'
         },
-        resumeUrl: 'data:application/pdf;base64,JVBERi0xLjc...'
-      });
+        session.user.id
+      );
 
-      expect(applyRes.status).toBe(200);
-      expect(applyRes.data).toBeDefined();
-      expect(applyRes.data!.stage).toBe('applied');
-      expect(applyRes.data!.opportunityId).toBe('opp-1');
-      expect(applyRes.data!.history).toHaveLength(1);
-      expect(applyRes.data!.history[0].stage).toBe('applied');
+      expect(applyRes).toBeDefined();
+      expect(applyRes.stage).toBe('applied');
+      expect(applyRes.opportunityId).toBe('opp-1');
+      expect(applyRes.history).toHaveLength(1);
+      expect(applyRes.history![0].stage).toBe('applied');
 
       // Candidate lists their applications
-      const myAppsRes = await applicationService.listMyApplications();
-      expect(myAppsRes.status).toBe(200);
-      const found = myAppsRes.data!.find((a) => a.opportunityId === 'opp-1');
+      const myApps = db.getApplicationsByCandidate(session.user.id);
+      const found = myApps.find((a) => a.opportunityId === 'opp-1');
       expect(found).toBeDefined();
     });
 
@@ -170,24 +184,26 @@ describe('Candidate Profile & Application Management System Tests', () => {
       const session = authService.getSession();
 
       // Submit an application
-      const applyRes = await applicationService.submit({
-        opportunityId: 'opp-2',
-        opportunityTitle: 'Highway Maintenance Culvert Construction Tender',
-        organizationId: 'org-mpw',
-        organizationName: 'Ministry of Public Works',
-        candidateUserId: session.user.id,
-        applicantName: 'Tamba Kollie',
-        applicantEmail: 'tamba.kollie@gmail.com',
-        coverNote: 'Consultancy bid.'
-      });
+      const applyRes = db.createApplication(
+        {
+          opportunityId: 'opp-2',
+          opportunityTitle: 'Highway Maintenance Culvert Construction Tender',
+          organizationId: 'org-mpw',
+          organizationName: 'Ministry of Public Works',
+          candidateUserId: session.user.id,
+          applicantName: 'Tamba Kollie',
+          applicantEmail: 'tamba.kollie@gmail.com',
+          coverNote: 'Consultancy bid.'
+        },
+        session.user.id
+      );
 
-      const appId = applyRes.data!.id;
+      const appId = applyRes.id;
 
       // Withdraw application
-      const withdrawRes = await applicationService.withdraw(appId, 'Accepted another position elsewhere');
-      expect(withdrawRes.status).toBe(200);
-      expect(withdrawRes.data!.stage).toBe('withdrawn');
-      expect(withdrawRes.data!.history.some((h) => h.stage === 'withdrawn')).toBe(true);
+      const withdrawRes = db.withdrawApplication(appId, 'Accepted another position elsewhere', session.user.id);
+      expect(withdrawRes.stage).toBe('withdrawn');
+      expect(withdrawRes.history!.some((h) => h.stage === 'withdrawn')).toBe(true);
     });
   });
 
@@ -197,77 +213,99 @@ describe('Candidate Profile & Application Management System Tests', () => {
       authService.loginAsRoleForTest('job_seeker');
       const candidateUser = authService.getSession().user;
 
-      const appRes = await applicationService.submit({
-        opportunityId: 'opp-1',
-        opportunityTitle: 'Senior Logistics & Supply Chain Manager',
-        organizationId: 'org-save-children',
-        organizationName: 'Save the Children Liberia',
-        candidateUserId: candidateUser.id,
-        applicantName: 'Tamba Kollie',
-        applicantEmail: candidateUser.email,
-        applicantPhone: '+231 77 554 9912',
-        applicantLocation: 'Montserrado'
-      });
+      const appRes = db.createApplication(
+        {
+          opportunityId: 'opp-1',
+          opportunityTitle: 'Senior Logistics & Supply Chain Manager',
+          organizationId: 'org-save-children',
+          organizationName: 'Save the Children Liberia',
+          candidateUserId: candidateUser.id,
+          applicantName: 'Tamba Kollie',
+          applicantEmail: candidateUser.email,
+          applicantPhone: '+231 77 554 9912',
+          applicantLocation: 'Montserrado'
+        },
+        candidateUser.id
+      );
 
-      const appId = appRes.data!.id;
+      const appId = appRes.id;
 
       // Switch to Employer
       authService.loginAsRoleForTest('employer');
+      const employerSession = authService.getSession();
+      const employerOrgId = employerSession.activeOrganization!.id;
+      const employerUserId = employerSession.user.id;
 
       // 1. Advance to Shortlisted
-      const shortlistRes = await applicationService.updateStage(appId, 'shortlisted', {
-        note: 'Strong experience in Liberian humanitarian logistics.'
-      });
-      expect(shortlistRes.status).toBe(200);
-      expect(shortlistRes.data!.stage).toBe('shortlisted');
+      const shortlistRes = db.updateApplicationStage(
+        appId,
+        'shortlisted',
+        { note: 'Strong experience in Liberian humanitarian logistics.' },
+        employerOrgId,
+        employerUserId
+      );
+      expect(shortlistRes.stage).toBe('shortlisted');
 
       // 2. Schedule Interview
-      const interviewRes = await applicationService.updateStage(appId, 'interview', {
-        interviewDetails: {
-          scheduledAt: '2026-09-12T14:00:00Z',
-          mode: 'video',
-          locationOrLink: 'https://meet.google.com/xyz-lib-safe',
-          interviewerNames: ['Dr. Evelyn Fahnbulleh', 'Korto Flomo'],
-          notes: 'Technical assessment of supply chain routing in Nimba County.'
+      const interviewRes = db.updateApplicationStage(
+        appId,
+        'interview',
+        {
+          interviewDetails: {
+            scheduledAt: '2026-09-12T14:00:00Z',
+            mode: 'video',
+            locationOrLink: 'https://meet.google.com/xyz-lib-safe',
+            interviewerNames: ['Dr. Evelyn Fahnbulleh', 'Korto Flomo'],
+            notes: 'Technical assessment of supply chain routing in Nimba County.'
+          },
+          note: 'Invited candidate to technical panel interview.'
         },
-        note: 'Invited candidate to technical panel interview.'
-      });
-      expect(interviewRes.status).toBe(200);
-      expect(interviewRes.data!.stage).toBe('interview');
-      expect(interviewRes.data!.interviewDetails).toBeDefined();
-      expect(interviewRes.data!.interviewDetails!.mode).toBe('video');
+        employerOrgId,
+        employerUserId
+      );
+      expect(interviewRes.stage).toBe('interview');
+      expect(interviewRes.interviewDetails).toBeDefined();
+      expect(interviewRes.interviewDetails!.mode).toBe('video');
 
       // 3. Issue Formal Hiring Offer
-      const offerRes = await applicationService.updateStage(appId, 'offer', {
-        hiringOfferDetails: {
-          offeredSalary: 2800,
-          currency: 'USD',
-          startDate: '2026-10-01',
-          contractType: 'full_time',
-          expiryDate: '2026-09-25',
-          offerLetterUrl: 'https://example.com/offers/save_children_tk2026.pdf',
-          terms: 'Standard humanitarian executive contract with field vehicle allowance.'
+      const offerRes = db.updateApplicationStage(
+        appId,
+        'offer',
+        {
+          hiringOfferDetails: {
+            offeredSalary: 2800,
+            currency: 'USD',
+            startDate: '2026-10-01',
+            contractType: 'full_time',
+            expiryDate: '2026-09-25',
+            offerLetterUrl: 'https://example.com/offers/save_children_tk2026.pdf',
+            terms: 'Standard humanitarian executive contract with field vehicle allowance.'
+          } as any,
+          note: 'Official offer letter generated and dispatched.'
         },
-        note: 'Official offer letter generated and dispatched.'
-      });
-      expect(offerRes.status).toBe(200);
-      expect(offerRes.data!.stage).toBe('offer');
-      expect(offerRes.data!.hiringOfferDetails!.offeredSalary).toBe(2800);
+        employerOrgId,
+        employerUserId
+      );
+      expect(offerRes.stage).toBe('offer');
+      expect(offerRes.hiringOfferDetails!.offeredSalary).toBe(2800);
 
       // 4. Mark Candidate as Hired
-      const hiredRes = await applicationService.updateStage(appId, 'hired', {
-        note: 'Candidate accepted offer. Onboarding scheduled for Oct 1st.'
-      });
-      expect(hiredRes.status).toBe(200);
-      expect(hiredRes.data!.stage).toBe('hired');
+      const hiredRes = db.updateApplicationStage(
+        appId,
+        'hired',
+        { note: 'Candidate accepted offer. Onboarding scheduled for Oct 1st.' },
+        employerOrgId,
+        employerUserId
+      );
+      expect(hiredRes.stage).toBe('hired');
 
       // Verify audit history trail
-      expect(hiredRes.data!.history.length).toBeGreaterThanOrEqual(4);
+      expect(hiredRes.history!.length).toBeGreaterThanOrEqual(4);
     });
 
     it('allows recruiter to reject an applicant with transparent reason', async () => {
       authService.loginAsRoleForTest('job_seeker');
-      const applyRes = await applicationService.submit({
+      const applyRes = db.createApplication({
         opportunityId: 'opp-1',
         opportunityTitle: 'Senior Logistics & Supply Chain Manager',
         organizationId: 'org-save-children',
@@ -275,36 +313,45 @@ describe('Candidate Profile & Application Management System Tests', () => {
         applicantName: 'Applicant To Reject',
         applicantEmail: 'reject.me@example.com'
       });
-      const appId = applyRes.data!.id;
+      const appId = applyRes.id;
 
       // Switch to employer
       authService.loginAsRoleForTest('employer');
+      const employerSession = authService.getSession();
 
-      const rejectRes = await applicationService.updateStage(appId, 'rejected', {
-        rejectionReason: 'Position closed due to budget realignment.'
-      });
+      const rejectRes = db.updateApplicationStage(
+        appId,
+        'rejected',
+        { rejectionReason: 'Position closed due to budget realignment.' },
+        employerSession.activeOrganization!.id,
+        employerSession.user.id
+      );
 
-      expect(rejectRes.status).toBe(200);
-      expect(rejectRes.data!.stage).toBe('rejected');
-      expect(rejectRes.data!.rejectionReason).toBe('Position closed due to budget realignment.');
+      expect(rejectRes.stage).toBe('rejected');
+      expect(rejectRes.rejectionReason).toBe('Position closed due to budget realignment.');
     });
 
     it('allows recruiter to score and save candidate evaluations', async () => {
       authService.loginAsRoleForTest('employer');
+      const employerSession = authService.getSession();
       const apps = db.getApplications();
       const testApp = apps[0];
 
-      const evalRes = await applicationService.updateEvaluation(testApp.id, {
-        rating: 5,
-        strengths: ['Extensive field logistics experience', 'Excellent team leadership'],
-        improvements: ['Needs familiarity with new digital customs declarations'],
-        internalNotes: 'Top recommended candidate for national logistics lead role.'
-      });
+      const evalRes = db.updateApplicationEvaluation(
+        testApp.id,
+        {
+          rating: 5,
+          strengths: ['Extensive field logistics experience', 'Excellent team leadership'],
+          improvements: ['Needs familiarity with new digital customs declarations'],
+          internalNotes: 'Top recommended candidate for national logistics lead role.'
+        },
+        employerSession.activeOrganization?.id,
+        employerSession.user.id
+      );
 
-      expect(evalRes.status).toBe(200);
-      expect(evalRes.data!.evaluations).toBeDefined();
-      expect(evalRes.data!.evaluations!.rating).toBe(5);
-      expect(evalRes.data!.evaluations!.strengths).toContain('Extensive field logistics experience');
+      expect((evalRes as any).evaluations).toBeDefined();
+      expect(evalRes.rating).toBe(5);
+      expect((evalRes as any).evaluations.strengths).toContain('Extensive field logistics experience');
     });
   });
 });

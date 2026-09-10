@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { applicationService } from '../services/applicationService';
 import { businessService } from '../services/businessService';
 import { authService } from '../services/authService';
 import { db } from '../db/dbClient';
@@ -25,11 +24,15 @@ describe('Domain Services Architecture', () => {
     });
   });
 
-  it('submits a candidate application and returns a standardized response', async () => {
+  // As of Phase 3, Service 3 (see src/tests/candidateAndApplication.test.ts's
+  // header comment), applicationService.ts also reads/writes Supabase
+  // exclusively now -- retargeted to dbClient.ts directly for the same
+  // reason as the opportunities test above.
+  it('submits a candidate application and returns a standardized response (local demo-mode data layer -- dbClient.ts)', () => {
     const opps = db.getOpportunities();
     const opp = opps[0];
 
-    const res = await applicationService.submit({
+    const res = db.createApplication({
       opportunityId: opp.id,
       opportunityTitle: opp.title,
       organizationName: opp.organization.name,
@@ -39,18 +42,18 @@ describe('Domain Services Architecture', () => {
       coverNote: 'Experienced professional'
     });
 
-    expect(res.status).toBe(200);
-    expect(res.data).toBeDefined();
-    expect(res.data!.applicantName).toBe('Fatu Kamara');
-    expect(res.data!.stage).toBe('applied');
+    expect(res).toBeDefined();
+    expect(res.applicantName).toBe('Fatu Kamara');
+    expect(res.stage).toBe('applied');
   });
 
-  it('updates application recruitment stage when authorized', async () => {
+  it('updates application recruitment stage when authorized (local demo-mode data layer -- dbClient.ts)', () => {
     authService.loginAsRoleForTest('employer');
+    const employerSession = authService.getSession();
     const opps = db.getOpportunities();
     const opp = opps[0];
 
-    const createRes = await applicationService.submit({
+    const createRes = db.createApplication({
       opportunityId: opp.id,
       opportunityTitle: opp.title,
       organizationName: opp.organization.name,
@@ -59,10 +62,15 @@ describe('Domain Services Architecture', () => {
       applicantPhone: '+231 88 222 3333'
     });
 
-    const updateRes = await applicationService.updateStage(createRes.data!.id, 'interview', 'Scheduled technical interview');
-    expect(updateRes.status).toBe(200);
-    expect(updateRes.data!.stage).toBe('interview');
-    expect(updateRes.data!.matchNotes).toBe('Scheduled technical interview');
+    const updateRes = db.updateApplicationStage(
+      createRes.id,
+      'interview',
+      { note: 'Scheduled technical interview', matchNotes: 'Scheduled technical interview' },
+      employerSession.activeOrganization?.id,
+      employerSession.user.id
+    );
+    expect(updateRes.stage).toBe('interview');
+    expect(updateRes.matchNotes).toBe('Scheduled technical interview');
   });
 
   it('allows investor/buyer to request NDA access to confidential businesses', async () => {

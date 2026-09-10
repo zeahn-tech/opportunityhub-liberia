@@ -5,6 +5,13 @@ import { applicationService } from '../services/applicationService';
 import { businessService } from '../services/businessService';
 import { OrgRole, OrgPermission, OrganizationSubscription } from '../types';
 
+// applicationService is still imported here ONLY for the guest/401 guard
+// in FLOW 2 below (`listMyApplications()` while logged out) -- that check
+// throws UnauthorizedError before ever reaching Supabase, so it's safe to
+// exercise the real service in this sandbox. Every other applicationService
+// call in this file was retargeted to dbClient.ts directly as of Phase 3,
+// Service 3 -- see src/tests/candidateAndApplication.test.ts's header
+// comment for the full rationale.
 describe('OpportunityHub Liberia — Integration & Regression Flow Suite', () => {
   const testPassword = 'StrongPassword2026!';
 
@@ -80,19 +87,21 @@ describe('OpportunityHub Liberia — Integration & Regression Flow Suite', () =>
     authService.loginAsUserForTest(registered.user.id);
 
     // 4. Return to original opportunity & apply successfully with session
-    const authSubmit = await applicationService.submit({
-      opportunityId: selectedOpp.id,
-      opportunityTitle: selectedOpp.title,
-      organizationName: selectedOpp.organization.name,
-      applicantName: 'Flow2 Applicant',
-      applicantEmail: 'flow2.auth@opportunityhub.lr',
-      applicantPhone: '+231 77 123 4567'
-    });
+    const authSubmit = db.createApplication(
+      {
+        opportunityId: selectedOpp.id,
+        opportunityTitle: selectedOpp.title,
+        organizationName: selectedOpp.organization.name,
+        applicantName: 'Flow2 Applicant',
+        applicantEmail: 'flow2.auth@opportunityhub.lr',
+        applicantPhone: '+231 77 123 4567'
+      },
+      registered.user.id
+    );
 
-    expect(authSubmit.status).toBe(200);
-    expect(authSubmit.data).toBeDefined();
-    expect(authSubmit.data?.applicantName).toBe('Flow2 Applicant');
-    expect(authSubmit.data?.opportunityId).toBe(selectedOpp.id);
+    expect(authSubmit).toBeDefined();
+    expect(authSubmit.applicantName).toBe('Flow2 Applicant');
+    expect(authSubmit.opportunityId).toBe(selectedOpp.id);
   });
 
   it('FLOW 3: User -> Create organization -> Become owner -> Invite member -> Member accepts -> Member accesses workspace', async () => {
@@ -191,14 +200,15 @@ describe('OpportunityHub Liberia — Integration & Regression Flow Suite', () =>
     const candidateApp = apps[0];
 
     // Recruiter transitions application stage to 'interview'
-    const updateRes = await applicationService.updateStage(
+    const updateRes = db.updateApplicationStage(
       candidateApp.id,
       'interview',
-      { note: 'Excellent resume, scheduled interview.' }
+      { note: 'Excellent resume, scheduled interview.' },
+      candidateApp.organizationId,
+      currentUser!.id
     );
-    expect(updateRes.status).toBe(200);
-    expect(updateRes.data).toBeDefined();
-    expect(updateRes.data?.stage).toBe('interview');
+    expect(updateRes).toBeDefined();
+    expect(updateRes.stage).toBe('interview');
   });
 
   it('FLOW 5: Candidate -> Apply -> Track application -> Receive messages', async () => {
@@ -215,16 +225,18 @@ describe('OpportunityHub Liberia — Integration & Regression Flow Suite', () =>
 
     // 2. Apply to opportunity
     const opp = db.getOpportunities()[0];
-    const submitRes = await applicationService.submit({
-      opportunityId: opp.id,
-      opportunityTitle: opp.title,
-      organizationName: opp.organization.name,
-      applicantName: 'Flow5 Candidate',
-      applicantEmail: 'flow5.candidate@opportunityhub.lr',
-      applicantPhone: '+231 77 000 1111'
-    });
-    expect(submitRes.status).toBe(200);
-    const createdAppId = submitRes.data!.id;
+    const submitRes = db.createApplication(
+      {
+        opportunityId: opp.id,
+        opportunityTitle: opp.title,
+        organizationName: opp.organization.name,
+        applicantName: 'Flow5 Candidate',
+        applicantEmail: 'flow5.candidate@opportunityhub.lr',
+        applicantPhone: '+231 77 000 1111'
+      },
+      candidateReg.user.id
+    );
+    const createdAppId = submitRes.id;
 
     // 3. Track Application
     const trackApps = db.getApplications().filter(a => a.applicantEmail === 'flow5.candidate@opportunityhub.lr');
