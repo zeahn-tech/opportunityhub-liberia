@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { candidateService } from '../services/candidateService';
 import { authService } from '../services/authService';
 import { db } from '../db/dbClient';
 import { CandidateProfile } from '../types';
@@ -13,10 +12,18 @@ import { CandidateProfile } from '../types';
  * src/tests/applicationService.test.ts for its mocked-Supabase-client
  * coverage and the verification doc for the live RLS/trigger proof.
  * Those tests were retargeted to call `db.*` directly, the same pattern
- * already used for jobMarketplace.test.ts (opportunityService, Service 2)
- * -- this is dbClient's own local-demo-mode behavior now, not
- * applicationService's. candidateService.* calls are untouched (that
- * domain hasn't been migrated yet -- Service 4).
+ * already used for jobMarketplace.test.ts (opportunityService, Service 2).
+ *
+ * "Candidate Profile Management" below was retargeted the same way as of
+ * Phase 3, Service 4 -- candidateService.ts now reads/writes Supabase
+ * exclusively (raw table owner-only via RLS; third-party visibility via
+ * SECURITY DEFINER RPCs, since it's conditional column-level redaction
+ * RLS alone can't express). See src/tests/candidateService.test.ts for
+ * its mocked-client coverage and docs/PHASE3_SERVICE4_VERIFICATION.md for
+ * the live proof -- including the exact redaction scenarios these two
+ * tests used to exercise through the service, now exercised directly
+ * against dbClient.ts's equivalent (and still-accurate, for local demo
+ * mode) getPublicCandidateProfile() implementation.
  */
 describe('Candidate Profile & Application Management System Tests', () => {
   beforeEach(() => {
@@ -24,19 +31,21 @@ describe('Candidate Profile & Application Management System Tests', () => {
   });
 
   describe('1. Candidate Profile Management & Persistence', () => {
-    it('allows a job seeker to retrieve and update their full professional profile', async () => {
+    it('allows a job seeker to retrieve and update their full professional profile', () => {
       authService.loginAsRoleForTest('job_seeker');
       const session = authService.getSession();
       const userId = session.user.id;
 
-      const profileRes = await candidateService.getMyProfile();
-      expect(profileRes.status).toBe(200);
-      expect(profileRes.data).toBeDefined();
-      expect(profileRes.data!.userId).toBe(userId);
+      let profile = db.getCandidateProfile(userId);
+      if (!profile) {
+        profile = db.saveCandidateProfile({ userId }, userId);
+      }
+      expect(profile).toBeDefined();
+      expect(profile!.userId).toBe(userId);
 
       // Update candidate profile with comprehensive credentials
       const updatedProfile: CandidateProfile = {
-        ...profileRes.data!,
+        ...profile!,
         headline: 'Senior Supply Chain & Logistics Director',
         county: 'Montserrado',
         city: 'Monrovia',
@@ -95,49 +104,49 @@ describe('Candidate Profile & Application Management System Tests', () => {
         }
       };
 
-      const saveRes = await candidateService.updateMyProfile(updatedProfile);
-      expect(saveRes.status).toBe(200);
-      expect(saveRes.data!.headline).toBe('Senior Supply Chain & Logistics Director');
-      expect(saveRes.data!.skills).toContain('WFP Compliance');
-      expect(saveRes.data!.education[0].institution).toBe('University of Liberia');
-      expect(saveRes.data!.cv?.fileName).toBe('Tamba_Kollie_Executive_CV_2026.pdf');
+      const saved = db.saveCandidateProfile(updatedProfile, userId);
+      expect(saved.headline).toBe('Senior Supply Chain & Logistics Director');
+      expect(saved.skills).toContain('WFP Compliance');
+      expect(saved.education[0].institution).toBe('University of Liberia');
+      expect(saved.cv?.fileName).toBe('Tamba_Kollie_Executive_CV_2026.pdf');
     });
 
-    it('enforces privacy settings when an unauthorized viewer accesses a candidate profile', async () => {
+    it('enforces privacy settings when an unauthorized viewer accesses a candidate profile', () => {
       authService.loginAsRoleForTest('job_seeker');
       const session = authService.getSession();
       const candidateUserId = session.user.id;
 
       // 1. Set privacy settings to on_application_only
-      await candidateService.updatePrivacySettings({
-        profileVisibility: 'public',
-        contactVisibility: 'on_application_only',
-        cvDownloadPermission: 'applied_jobs_only'
-      });
+      db.saveCandidateProfile(
+        {
+          userId: candidateUserId,
+          privacySettings: {
+            profileVisibility: 'public',
+            contactVisibility: 'on_application_only',
+            cvDownloadPermission: 'applied_jobs_only'
+          }
+        },
+        candidateUserId
+      );
 
       // Switch to an unrelated employer with no active applications
       authService.loginAsRoleForTest('business_seller');
+      const viewerSession = authService.getSession();
 
-      const maskedRes = await candidateService.getPublicProfile(candidateUserId);
-      expect(maskedRes.status).toBe(200);
-      expect(maskedRes.data).toBeDefined();
+      const masked = db.getPublicCandidateProfile(candidateUserId, viewerSession.user.id, viewerSession.activeOrganization?.id);
+      expect(masked).toBeDefined();
       // Contact info should be masked and CV fileDataUrl stripped
-      expect(maskedRes.data!.email).toBe('[Visible upon application]');
-      expect(maskedRes.data!.phone).toBe('[Visible upon application]');
-      if (maskedRes.data!.cv) {
-        expect(maskedRes.data!.cv.fileDataUrl).toBeUndefined();
+      expect(masked!.email).toBe('[Visible upon application]');
+      expect(masked!.phone).toBe('[Visible upon application]');
+      if (masked!.cv) {
+        expect(masked!.cv.fileDataUrl).toBeUndefined();
       }
 
       // 2. Set profileVisibility to hidden
-      authService.loginAsRoleForTest('job_seeker');
-      await candidateService.updatePrivacySettings({
-        profileVisibility: 'hidden'
-      });
+      db.saveCandidateProfile({ userId: candidateUserId, privacySettings: { profileVisibility: 'hidden' } as any }, candidateUserId);
 
-      authService.loginAsRoleForTest('business_seller');
-      const hiddenRes = await candidateService.getPublicProfile(candidateUserId);
-      expect(hiddenRes.status).toBe(200);
-      expect(hiddenRes.data).toBeNull();
+      const hidden = db.getPublicCandidateProfile(candidateUserId, viewerSession.user.id, viewerSession.activeOrganization?.id);
+      expect(hidden).toBeNull();
     });
   });
 
