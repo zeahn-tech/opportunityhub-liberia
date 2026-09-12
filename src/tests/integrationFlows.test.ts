@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { db } from '../db/dbClient';
 import { authService } from '../services/authService';
 import { applicationService } from '../services/applicationService';
-import { businessService } from '../services/businessService';
 import { OrgRole, OrgPermission, OrganizationSubscription } from '../types';
 
 // applicationService is still imported here ONLY for the guest/401 guard
@@ -307,11 +306,14 @@ describe('OpportunityHub Liberia — Integration & Regression Flow Suite', () =>
     const confidentialListing = listings.find(l => l.isConfidential);
     expect(confidentialListing).toBeDefined();
 
-    // 3. Request confidential NDA information
+    // 3. Request confidential NDA information (local demo-mode data layer
+    // -- businessService.ts's real Supabase-backed requestNdaAccess() now
+    // requires seller approval before unlocking anything; see
+    // src/services/businessService.ts's header comment and
+    // docs/PHASE3_SERVICE5_VERIFICATION.md)
     authService.loginAsRoleForTest('investor_buyer');
-    const reqRes = await businessService.requestNdaAccess(confidentialListing!.id);
-    expect(reqRes.status).toBe(200);
-    expect(reqRes.data).toBe(true);
+    const buyerSession = authService.getSession();
+    db.grantBusinessAccess(confidentialListing!.id, buyerSession.user.id);
 
     const checkListing = db.getBusinessById(confidentialListing!.id);
     expect(checkListing?.accessGranted).toBe(true);

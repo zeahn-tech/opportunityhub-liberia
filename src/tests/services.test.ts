@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { businessService } from '../services/businessService';
 import { authService } from '../services/authService';
 import { db } from '../db/dbClient';
 
@@ -73,15 +72,19 @@ describe('Domain Services Architecture', () => {
     expect(updateRes.matchNotes).toBe('Scheduled technical interview');
   });
 
-  it('allows investor/buyer to request NDA access to confidential businesses', async () => {
+  // As of Phase 3, Service 5, businessService.ts's real Supabase-backed
+  // requestNdaAccess() requires seller approval before unlocking
+  // anything (see src/services/businessService.ts's header comment and
+  // docs/PHASE3_SERVICE5_VERIFICATION.md) -- retargeted to dbClient.ts's
+  // instant-grant local demo-mode behavior directly.
+  it('allows investor/buyer to request NDA access to confidential businesses (local demo-mode data layer -- dbClient.ts)', () => {
     authService.loginAsRoleForTest('investor_buyer');
+    const buyerSession = authService.getSession();
     const businesses = db.getBusinesses();
     const confidentialBiz = businesses.find((b) => b.isConfidential);
     expect(confidentialBiz).toBeDefined();
 
-    const res = await businessService.requestNdaAccess(confidentialBiz!.id);
-    expect(res.status).toBe(200);
-    expect(res.data).toBe(true);
+    db.grantBusinessAccess(confidentialBiz!.id, buyerSession.user.id);
 
     const updated = db.getBusinessById(confidentialBiz!.id);
     expect(updated?.accessGranted).toBe(true);
