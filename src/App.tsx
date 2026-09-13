@@ -72,7 +72,7 @@ function AppContent() {
 
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
   const [businesses, setBusinesses] = useState<BusinessListing[]>(() => db.getBusinesses());
-  const [audits, setAudits] = useState<VerificationAudit[]>(() => db.getVerificationAudits());
+  const [audits, setAudits] = useState<VerificationAudit[]>([]);
   const [applications, setApplications] = useState<Application[]>([]);
 
   const [savedOpportunityIds, setSavedOpportunityIds] = useState<string[]>([]);
@@ -112,10 +112,25 @@ function AppContent() {
     }
   };
 
+  // Verification audits now live in Supabase too (Phase 3, Service 7 --
+  // see docs/PHASE3_SERVICE7_VERIFICATION.md). RLS alone correctly scopes
+  // the result: an org admin sees their own org's requests, a platform
+  // admin sees every request (their review queue), and anyone else gets
+  // an empty list.
+  const refreshAudits = async () => {
+    const res = await verificationService.list();
+    if (res.data) {
+      setAudits(res.data);
+    } else if (res.error) {
+      showToast(res.error.message, 'error');
+    }
+  };
+
   // All useEffect hooks
   useEffect(() => {
     refreshOpportunities();
     refreshApplications();
+    refreshAudits();
   }, []);
 
   // Active Tab synchronized with route path
@@ -293,7 +308,7 @@ function AppContent() {
   const handleAuditDecision = async (auditId: string, status: 'approved' | 'rejected') => {
     const res = await verificationService.decide(auditId, status);
     if (res.data) {
-      setAudits(db.getVerificationAudits());
+      await refreshAudits();
       showToast(`Verification status updated to "${status.toUpperCase()}".`);
     } else if (res.error) {
       showToast(res.error.message, 'error');
