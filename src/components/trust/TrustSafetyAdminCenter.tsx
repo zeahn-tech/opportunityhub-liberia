@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   ShieldCheck,
   ShieldAlert,
@@ -109,9 +109,9 @@ export const TrustSafetyAdminCenter: React.FC<{ currentUserId?: string }> = () =
   const [organizations, setOrganizations] = useState<Organization[]>(() => db.getOrganizations());
   const [opportunities, setOpportunities] = useState<Opportunity[]>(() => db.getOpportunities());
   const [businesses, setBusinesses] = useState<BusinessListing[]>(() => db.getBusinesses());
-  const [verificationRequests, setVerificationRequests] = useState<VerificationRequest[]>(() => db.getVerificationRequests());
-  const [reports, setReports] = useState<ContentReport[]>(() => db.getContentReports());
-  const [restrictions, setRestrictions] = useState<AccountRestriction[]>(() => db.getAccountRestrictions());
+  const [verificationRequests, setVerificationRequests] = useState<VerificationRequest[]>([]);
+  const [reports, setReports] = useState<ContentReport[]>([]);
+  const [restrictions, setRestrictions] = useState<AccountRestriction[]>([]);
   const [anomalies, setAnomalies] = useState<SuspiciousActivityEvent[]>(() => db.getSuspiciousActivityEvents());
   const [auditLogs, setAuditLogs] = useState(() => db.getAuditLogs());
 
@@ -168,19 +168,41 @@ export const TrustSafetyAdminCenter: React.FC<{ currentUserId?: string }> = () =
   const [newCat, setNewCat] = useState('');
   const [newInd, setNewInd] = useState('');
 
-  // Refresh helper
-  const refreshAllData = () => {
+  // Refresh helper. Verification requests / content reports / account
+  // restrictions now come from Supabase via trustSafetyService (Phase 3,
+  // Service 8 -- see docs/PHASE3_SERVICE8_VERIFICATION.md); everything
+  // else here is still dbClient.ts-backed (opportunities/organizations/
+  // businesses/users/anomalies/audit logs are later or already-migrated
+  // services this admin dashboard doesn't yet read through their real
+  // services either -- a pre-existing gap, not introduced by this pass).
+  const refreshAllData = async (silent = false) => {
     setUsers(db.getUsers());
     setOrganizations(db.getOrganizations());
     setOpportunities(db.getOpportunities());
     setBusinesses(db.getBusinesses());
-    setVerificationRequests(db.getVerificationRequests());
-    setReports(db.getContentReports());
-    setRestrictions(db.getAccountRestrictions());
+    try {
+      const [freshRequests, freshReports, freshRestrictions] = await Promise.all([
+        trustSafetyService.getVerificationRequests(),
+        trustSafetyService.getContentReports(),
+        trustSafetyService.getAccountRestrictions()
+      ]);
+      setVerificationRequests(freshRequests);
+      setReports(freshReports);
+      setRestrictions(freshRestrictions);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Failed to sync trust & safety data.', 'error');
+    }
     setAnomalies(db.getSuspiciousActivityEvents());
     setAuditLogs(db.getAuditLogs());
-    showToast('Platform databases synced successfully.', 'success');
+    if (!silent) {
+      showToast('Platform databases synced successfully.', 'success');
+    }
   };
+
+  useEffect(() => {
+    refreshAllData(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // --- ACTIONS ---
 
@@ -566,7 +588,7 @@ export const TrustSafetyAdminCenter: React.FC<{ currentUserId?: string }> = () =
         {/* Action Controls */}
         <div className="flex items-center gap-2">
           <button
-            onClick={refreshAllData}
+            onClick={() => refreshAllData()}
             className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-xs font-bold rounded-xl border border-white/10 transition-all flex items-center gap-1.5 cursor-pointer"
           >
             <RefreshCw className="w-3.5 h-3.5" />
