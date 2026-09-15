@@ -1,6 +1,6 @@
-import React, { useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { analyticsService } from '../../services/analyticsService';
+import { analyticsService, EmployerAnalytics } from '../../services/analyticsService';
 import { 
   Eye, 
   Users, 
@@ -19,9 +19,20 @@ export const EmployerAnalyticsDashboard: React.FC = () => {
   const { session } = useAuth();
   const activeOrg = session?.activeOrganization;
 
-  const metrics = useMemo(() => {
-    if (!activeOrg) return null;
-    return analyticsService.getEmployerAnalytics(activeOrg.id);
+  const [metrics, setMetrics] = useState<EmployerAnalytics | null>(null);
+
+  useEffect(() => {
+    if (!activeOrg) {
+      setMetrics(null);
+      return;
+    }
+    let cancelled = false;
+    analyticsService.getEmployerAnalytics(activeOrg.id).then((result) => {
+      if (!cancelled) setMetrics(result);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [activeOrg]);
 
   if (!activeOrg) {

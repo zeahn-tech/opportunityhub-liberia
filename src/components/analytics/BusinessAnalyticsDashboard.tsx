@@ -1,5 +1,5 @@
-import React, { useMemo } from 'react';
-import { analyticsService } from '../../services/analyticsService';
+import React, { useState, useEffect } from 'react';
+import { analyticsService, BusinessMarketplaceAnalytics } from '../../services/analyticsService';
 import { useAuth } from '../../context/AuthContext';
 import { 
   Eye, 
@@ -12,7 +12,8 @@ import {
   Layers, 
   Sparkles,
   Building,
-  DollarSign
+  DollarSign,
+  AlertCircle
 } from 'lucide-react';
 
 interface BusinessAnalyticsDashboardProps {
@@ -33,14 +34,31 @@ export const BusinessAnalyticsDashboard: React.FC<BusinessAnalyticsDashboardProp
   // Respect tenant isolation: 
   // If the user is a platform admin, show platform-wide enterprise marketplace trends.
   // Otherwise, filter strictly to listings owned by the logged-in seller.
-  const metrics = useMemo(() => {
+  const [metrics, setMetrics] = useState<BusinessMarketplaceAnalytics | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
     const ownerId = isPlatformAdmin ? undefined : (currentUserId || 'none');
-    return analyticsService.getBusinessMarketplaceAnalytics(ownerId);
+    analyticsService.getBusinessMarketplaceAnalytics(ownerId).then((result) => {
+      if (!cancelled) setMetrics(result);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [currentUserId, isPlatformAdmin]);
 
   const formattingRate = (rate: number) => {
     return isNaN(rate) ? 0 : rate;
   };
+
+  if (!metrics) {
+    return (
+      <div className="p-8 text-center bg-white rounded-3xl border border-[#E8E4D9]">
+        <AlertCircle className="w-8 h-8 text-amber-600 mx-auto mb-2 animate-pulse" />
+        <p className="text-xs font-semibold text-[#283618]">Gathering metric logs. Please wait...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

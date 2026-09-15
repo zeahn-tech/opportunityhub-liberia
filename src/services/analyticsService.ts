@@ -1,14 +1,32 @@
-import { db } from '../db/dbClient';
-import { storageAdapter } from '../db/storageAdapter';
-import { 
-  Application, 
-  BusinessListing, 
-  Opportunity, 
-  Organization, 
-  User, 
-  OrganizationSubscription,
-  BusinessAccessRequest
-} from '../types';
+/**
+ * analyticsService.ts
+ *
+ * Phase 3, Service 9 (final service) of the dbClient -> Supabase
+ * migration (see docs/PRODUCTION_CERTIFICATION_REPORT.md, "Database
+ * Status", and docs/PHASE3_SERVICE9_VERIFICATION.md for the live proof).
+ *
+ * getPlatformAnalytics() calls get_platform_analytics(), a SECURITY
+ * DEFINER RPC gated by is_platform_admin() -- deliberately, not for lack
+ * of a simpler option. This dashboard is cross-organization by nature.
+ * If it queried opportunities/applications/organizations/etc. directly
+ * through the anon client, RLS would silently restrict the results to
+ * whatever the caller's own org memberships and public rows allow --
+ * producing a dashboard that quietly UNDER-COUNTS everything for a real
+ * platform admin. Not a security leak, but a data-integrity bug that
+ * would be very easy to ship unnoticed. The RPC aggregates directly in
+ * SQL and bypasses RLS deliberately and correctly for this one read-only
+ * reporting purpose, gated the same way every other platform-admin-only
+ * RPC in this phase is.
+ *
+ * getEmployerAnalytics()/getBusinessMarketplaceAnalytics() are NOT RPCs
+ * -- an org member's/business owner's own RLS access to their own
+ * org's opportunities/applications/business listings is already
+ * complete, so these compute their aggregates client-side from ordinary
+ * already-migrated queries. No special privilege is needed or granted.
+ */
+
+import { getSupabaseClient } from '../lib/supabaseClient';
+import { ForbiddenError } from '../core/errors/AppError';
 
 export interface PlatformAnalytics {
   users: {
@@ -16,7 +34,6 @@ export interface PlatformAnalytics {
     byRole: Record<string, number>;
     byStatus: Record<string, number>;
     byCounty: Record<string, number>;
-    growthOverTime: Array<{ month: string; count: number }>;
   };
   organizations: {
     total: number;
@@ -33,15 +50,7 @@ export interface PlatformAnalytics {
   applications: {
     total: number;
     byStage: Record<string, number>;
-    funnel: {
-      applied: number;
-      under_review: number;
-      shortlisted: number;
-      interviewed: number;
-      offered: number;
-      hired: number;
-    };
-    successRate: number; // hired / total %
+    successRate: number;
   };
   opportunities: {
     total: number;
@@ -53,26 +62,13 @@ export interface PlatformAnalytics {
     byStatus: Record<string, number>;
     byIndustry: Record<string, number>;
     averageAskingPrice: number;
-    medianAskingPrice: number;
-  };
-  revenue: {
-    totalRevenueUSD: number;
-    monthlyRecurringRevenueUSD: number;
-    byTier: Record<string, number>;
-    byCycle: Record<string, number>;
-    history: Array<{ month: string; revenue: number }>;
   };
   subscriptions: {
     total: number;
     active: number;
     byTier: Record<string, number>;
   };
-  engagement: {
-    totalViews: number;
-    totalMessages: number;
-    jobApplicationRate: number; // applications per vacancy
-    averageInquiriesPerListing: number;
-  };
+  generatedAt: string;
 }
 
 export interface EmployerAnalytics {
@@ -83,254 +79,74 @@ export interface EmployerAnalytics {
   hiringOutcomes: {
     offersMade: number;
     candidatesHired: number;
-    rejectionRate: number; // rejected / total %
-    offerAcceptanceRate: number; // hired / offersMade %
+    rejectionRate: number;
+    offerAcceptanceRate: number;
   };
-  jobPerformanceList: Array<{
-    id: string;
-    title: string;
-    views: number;
-    applications: number;
-    status: string;
-  }>;
+  jobPerformanceList: Array<{ id: string; title: string; views: number; applications: number; status: string }>;
 }
 
 export interface BusinessMarketplaceAnalytics {
   listingViews: number;
+  /** Always 0 -- no backing table for business saves exists yet (deferred in Service 5, see docs/PHASE3_SERVICE5_VERIFICATION.md). Not fabricated data; an honest placeholder. */
   savesCount: number;
   buyerInquiries: number;
   conversionMetrics: {
     ndaRequestsTotal: number;
     ndaApprovedCount: number;
-    inquiryConversionRate: number; // inquiries to deal status %
-    savesToInquiriesRate: number; // inquiries / saves %
+    /** Always 0 -- depends on savesCount, which has no real data source yet. */
+    savesToInquiriesRate: number;
   };
   listingPerformanceList: Array<{
     id: string;
     title: string;
     views: number;
+    /** Always 0 -- see savesCount above. */
     saves: number;
+    /** Always 0 -- no backing table for business inquiries exists yet (deferred in Service 5). */
     inquiries: number;
     status: string;
   }>;
 }
 
+function client() {
+  const c = getSupabaseClient();
+  if (!c) {
+    throw new ForbiddenError('Supabase is not configured; analyticsService requires a live backend.');
+  }
+  return c;
+}
+
+function translateError(error: { code?: string; message: string }): never {
+  if (error.code === '42501') {
+    throw new ForbiddenError(error.message || 'You do not have permission to view this analytics dashboard.');
+  }
+  throw new Error(error.message);
+}
+
 export const analyticsService = {
-  getPlatformAnalytics(): PlatformAnalytics {
-    const users = db.getUsers() || [];
-    const orgs = db.getOrganizations() || [];
-    const opps = db.getOpportunities() || [];
-    const apps = db.getApplications() || [];
-    const businesses = db.getBusinesses() || [];
-    const subs = storageAdapter.getItem<OrganizationSubscription[]>('subscriptions') || [];
-    const messages = storageAdapter.getItem<any[]>('direct_messages') || [];
-
-    // User roles & statuses
-    const byRole: Record<string, number> = {};
-    const byStatus: Record<string, number> = {};
-    const byCounty: Record<string, number> = {};
-    users.forEach(u => {
-      byRole[u.primaryRole] = (byRole[u.primaryRole] || 0) + 1;
-      byStatus[u.accountStatus] = (byStatus[u.accountStatus] || 0) + 1;
-      if (u.primaryCounty) {
-        byCounty[u.primaryCounty] = (byCounty[u.primaryCounty] || 0) + 1;
-      }
-    });
-
-    // Mock User growth history
-    const growthOverTime = [
-      { month: 'Jun 2026', count: Math.max(10, Math.floor(users.length * 0.4)) },
-      { month: 'Jul 2026', count: Math.max(25, Math.floor(users.length * 0.65)) },
-      { month: 'Aug 2026', count: Math.max(40, Math.floor(users.length * 0.85)) },
-      { month: 'Sep 2026', count: users.length }
-    ];
-
-    // Organizations types and verification status
-    const orgByType: Record<string, number> = {};
-    let verifiedOrgs = 0;
-    orgs.forEach(o => {
-      const type = o.type || 'private_company';
-      orgByType[type] = (orgByType[type] || 0) + 1;
-      if (o.isVerified) verifiedOrgs++;
-    });
-
-    // Jobs (Opps with type 'job')
-    const jobs = opps.filter(o => o.type === 'job');
-    const workplaceModel: Record<string, number> = {};
-    const employmentType: Record<string, number> = {};
-    const jobCounty: Record<string, number> = {};
-    jobs.forEach(j => {
-      if (j.workplaceModel) workplaceModel[j.workplaceModel] = (workplaceModel[j.workplaceModel] || 0) + 1;
-      if (j.employmentType) employmentType[j.employmentType] = (employmentType[j.employmentType] || 0) + 1;
-      if (j.county) jobCounty[j.county] = (jobCounty[j.county] || 0) + 1;
-    });
-
-    // Opportunities
-    const oppByType: Record<string, number> = {};
-    const oppByStatus: Record<string, number> = {};
-    opps.forEach(o => {
-      oppByType[o.type] = (oppByType[o.type] || 0) + 1;
-      oppByStatus[o.status] = (oppByStatus[o.status] || 0) + 1;
-    });
-
-    // Applications & conversion funnel
-    const appByStage: Record<string, number> = {};
-    const funnel = {
-      applied: 0,
-      under_review: 0,
-      shortlisted: 0,
-      interviewed: 0,
-      offered: 0,
-      hired: 0
-    };
-
-    apps.forEach(a => {
-      appByStage[a.stage] = (appByStage[a.stage] || 0) + 1;
-      funnel.applied++;
-      if (['under_review', 'shortlisted', 'interview', 'offer', 'hired'].includes(a.stage)) {
-        funnel.under_review++;
-      }
-      if (['shortlisted', 'interview', 'offer', 'hired'].includes(a.stage)) {
-        funnel.shortlisted++;
-      }
-      if (['interview', 'offer', 'hired'].includes(a.stage)) {
-        funnel.interviewed++;
-      }
-      if (['offer', 'hired'].includes(a.stage)) {
-        funnel.offered++;
-      }
-      if (a.stage === 'hired') {
-        funnel.hired++;
-      }
-    });
-
-    const successRate = apps.length > 0 ? Math.round((funnel.hired / apps.length) * 100) : 0;
-
-    // Business Listings
-    const bizByStatus: Record<string, number> = {};
-    const bizByIndustry: Record<string, number> = {};
-    let totalAskingPrice = 0;
-    const prices: number[] = [];
-
-    businesses.forEach(b => {
-      const status = b.moderationStatus || 'published';
-      bizByStatus[status] = (bizByStatus[status] || 0) + 1;
-      bizByIndustry[b.industry] = (bizByIndustry[b.industry] || 0) + 1;
-      if (b.askingPriceUSD) {
-        totalAskingPrice += b.askingPriceUSD;
-        prices.push(b.askingPriceUSD);
-      }
-    });
-
-    const averageAskingPrice = prices.length > 0 ? Math.round(totalAskingPrice / prices.length) : 0;
-    prices.sort((a, b) => a - b);
-    const medianAskingPrice = prices.length > 0 ? prices[Math.floor(prices.length / 2)] : 0;
-
-    // Revenue from active subscriptions
-    let mrr = 0;
-    const byTier: Record<string, number> = { free: 0, pro: 0, enterprise: 0 };
-    const byCycle: Record<string, number> = { monthly: 0, annual: 0 };
-
-    subs.forEach(s => {
-      if (s.status === 'active') {
-        const tier = s.planId === 'plan-pro' ? 'pro' : s.planId === 'plan-enterprise' ? 'enterprise' : 'free';
-        byTier[tier]++;
-        const cycle = s.billingCycle || 'monthly';
-        byCycle[cycle]++;
-
-        let cost = 0;
-        if (s.planId === 'plan-pro') cost = 120;
-        if (s.planId === 'plan-enterprise') cost = 480;
-        
-        mrr += cost;
-      }
-    });
-
-    // Total captured revenue (mrr + historic simulation logs)
-    const history = [
-      { month: 'Jun 2026', revenue: Math.max(300, Math.floor(mrr * 0.4)) },
-      { month: 'Jul 2026', revenue: Math.max(800, Math.floor(mrr * 0.6)) },
-      { month: 'Aug 2026', revenue: Math.max(1400, Math.floor(mrr * 0.85)) },
-      { month: 'Sep 2026', revenue: mrr }
-    ];
-    const totalRevenueUSD = history.reduce((sum, item) => sum + item.revenue, 0);
-
-    // Engagement
-    const totalViews = opps.reduce((sum, o) => sum + (o.viewsCount || 0), 0) + 
-                       businesses.reduce((sum, b) => sum + (b.viewsCount || 0), 0);
-    const totalInquiries = businesses.reduce((sum, b) => sum + (b.inquiriesCount || 0), 0);
-
-    return {
-      users: {
-        total: users.length,
-        byRole,
-        byStatus,
-        byCounty,
-        growthOverTime
-      },
-      organizations: {
-        total: orgs.length,
-        byType: orgByType,
-        verifiedCount: verifiedOrgs,
-        unverifiedCount: orgs.length - verifiedOrgs
-      },
-      jobs: {
-        total: jobs.length,
-        byWorkplaceModel: workplaceModel,
-        byEmploymentType: employmentType,
-        byCounty: jobCounty
-      },
-      applications: {
-        total: apps.length,
-        byStage: appByStage,
-        funnel,
-        successRate
-      },
-      opportunities: {
-        total: opps.length,
-        byType: oppByType,
-        byStatus: oppByStatus
-      },
-      businessListings: {
-        total: businesses.length,
-        byStatus: bizByStatus,
-        byIndustry: bizByIndustry,
-        averageAskingPrice,
-        medianAskingPrice
-      },
-      revenue: {
-        totalRevenueUSD,
-        monthlyRecurringRevenueUSD: mrr,
-        byTier,
-        byCycle,
-        history
-      },
-      subscriptions: {
-        total: subs.length,
-        active: subs.filter(s => s.status === 'active').length,
-        byTier
-      },
-      engagement: {
-        totalViews,
-        totalMessages: messages.length,
-        jobApplicationRate: jobs.length > 0 ? Math.round((apps.length / jobs.length) * 10) / 10 : 0,
-        averageInquiriesPerListing: businesses.length > 0 ? Math.round((totalInquiries / businesses.length) * 10) / 10 : 0
-      }
-    };
+  async getPlatformAnalytics(): Promise<PlatformAnalytics> {
+    const { data, error } = await client().rpc('get_platform_analytics');
+    if (error) translateError(error);
+    return data as PlatformAnalytics;
   },
 
-  getEmployerAnalytics(organizationId: string): EmployerAnalytics {
-    const opps = db.getOpportunities() || [];
-    const apps = db.getApplications() || [];
+  async getEmployerAnalytics(organizationId: string): Promise<EmployerAnalytics> {
+    const [{ data: oppRows, error: oppError }, { data: appRows, error: appError }] = await Promise.all([
+      client().from('opportunities').select('id, title, status, views_count').eq('organization_id', organizationId),
+      client()
+        .from('applications')
+        .select('opportunity_id, stage, opportunities!inner(organization_id)')
+        .eq('opportunities.organization_id', organizationId)
+    ]);
+    if (oppError) throw new Error(oppError.message);
+    if (appError) throw new Error(appError.message);
 
-    // Tenant isolation: filter opportunities and applications for this employer organization
-    const orgOpps = opps.filter(o => o.organizationId === organizationId);
-    const orgOppIds = orgOpps.map(o => o.id);
-    const orgApps = apps.filter(a => orgOppIds.includes(a.opportunityId));
+    const opps = (oppRows as { id: string; title: string; status: string; views_count: number | null }[]) || [];
+    const apps = (appRows as { opportunity_id: string; stage: string }[]) || [];
 
     let jobViews = 0;
-    orgOpps.forEach(o => {
-      jobViews += o.viewsCount || 0;
+    opps.forEach((o) => {
+      jobViews += o.views_count ?? 0;
     });
 
     let shortlistCount = 0;
@@ -339,95 +155,86 @@ export const analyticsService = {
     let candidatesHired = 0;
     let rejectedCount = 0;
 
-    orgApps.forEach(a => {
+    apps.forEach((a) => {
       if (a.stage === 'shortlisted') shortlistCount++;
       if (a.stage === 'interview') interviewCount++;
       if (a.stage === 'offer') offersMade++;
       if (a.stage === 'hired') {
         candidatesHired++;
-        offersMade++; // standard flow
+        offersMade++;
       }
       if (a.stage === 'rejected') rejectedCount++;
     });
 
-    const rejectionRate = orgApps.length > 0 ? Math.round((rejectedCount / orgApps.length) * 100) : 0;
+    const rejectionRate = apps.length > 0 ? Math.round((rejectedCount / apps.length) * 100) : 0;
     const offerAcceptanceRate = offersMade > 0 ? Math.round((candidatesHired / offersMade) * 100) : 100;
 
-    const jobPerformanceList = orgOpps.map(o => {
-      const oppApps = orgApps.filter(a => a.opportunityId === o.id);
-      return {
-        id: o.id,
-        title: o.title,
-        views: o.viewsCount || 0,
-        applications: oppApps.length,
-        status: o.status
-      };
-    });
+    const jobPerformanceList = opps.map((o) => ({
+      id: o.id,
+      title: o.title,
+      views: o.views_count ?? 0,
+      applications: apps.filter((a) => a.opportunity_id === o.id).length,
+      status: o.status
+    }));
 
     return {
       jobViews,
-      applicationsCount: orgApps.length,
+      applicationsCount: apps.length,
       shortlistCount,
       interviewCount,
-      hiringOutcomes: {
-        offersMade,
-        candidatesHired,
-        rejectionRate,
-        offerAcceptanceRate
-      },
+      hiringOutcomes: { offersMade, candidatesHired, rejectionRate, offerAcceptanceRate },
       jobPerformanceList
     };
   },
 
-  getBusinessMarketplaceAnalytics(ownerUserId?: string): BusinessMarketplaceAnalytics {
-    const businesses = db.getBusinesses() || [];
-    const ndaRequests = storageAdapter.getItem<BusinessAccessRequest[]>('business_nda_requests') || [];
+  /**
+   * `savesCount`/`inquiriesCount`/conversion-rate-by-saves are NOT
+   * included here -- there is no backing table for business saves or
+   * inquiries yet (deferred in Service 5's migration; see
+   * docs/PHASE3_SERVICE5_VERIFICATION.md). NDA metrics use the real
+   * business_access_requests table.
+   */
+  async getBusinessMarketplaceAnalytics(ownerUserId?: string): Promise<BusinessMarketplaceAnalytics> {
+    let listingQuery = client().from('business_listings').select('id, title, status, views_count, owner_user_id');
+    if (ownerUserId) listingQuery = listingQuery.eq('owner_user_id', ownerUserId);
+    const { data: listingRows, error: listingError } = await listingQuery;
+    if (listingError) throw new Error(listingError.message);
 
-    // Filter to listings owned by the user (or all if platform overview requested)
-    const activeBusinesses = ownerUserId 
-      ? businesses.filter(b => b.ownerUserId === ownerUserId)
-      : businesses;
+    const listings = (listingRows as { id: string; title: string; status: string; views_count: number | null; owner_user_id: string }[]) || [];
+    const listingIds = listings.map((l) => l.id);
 
-    const activeBizIds = activeBusinesses.map(b => b.id);
+    let ndaRequestsTotal = 0;
+    let ndaApprovedCount = 0;
+    if (listingIds.length > 0) {
+      const { data: ndaRows, error: ndaError } = await client()
+        .from('business_access_requests')
+        .select('status')
+        .in('listing_id', listingIds);
+      if (ndaError) throw new Error(ndaError.message);
+      const ndas = (ndaRows as { status: string }[]) || [];
+      ndaRequestsTotal = ndas.length;
+      ndaApprovedCount = ndas.filter((n) => n.status === 'approved').length;
+    }
 
     let listingViews = 0;
-    let savesCount = 0;
-    let buyerInquiries = 0;
-
-    activeBusinesses.forEach(b => {
-      listingViews += b.viewsCount || 0;
-      savesCount += b.savedByUsers?.length || 0;
-      buyerInquiries += b.inquiriesCount || 0;
+    listings.forEach((l) => {
+      listingViews += l.views_count ?? 0;
     });
 
-    const activeNdas = ndaRequests.filter(r => activeBizIds.includes(r.businessId));
-    const ndaRequestsTotal = activeNdas.length;
-    const ndaApprovedCount = activeNdas.filter(r => r.status === 'approved').length;
-
-    // Conversion: count sold/under offer vs total
-    const underOfferOrSold = activeBusinesses.filter(b => b.moderationStatus === 'published' && b.askingPriceUSD === 0 /* simulated status */).length;
-    const inquiryConversionRate = buyerInquiries > 0 ? Math.round((underOfferOrSold / buyerInquiries) * 100) : 0;
-    const savesToInquiriesRate = savesCount > 0 ? Math.round((buyerInquiries / savesCount) * 100) : 0;
-
-    const listingPerformanceList = activeBusinesses.map(b => ({
-      id: b.id,
-      title: b.title,
-      views: b.viewsCount || 0,
-      saves: b.savedByUsers?.length || 0,
-      inquiries: b.inquiriesCount || 0,
-      status: b.moderationStatus || 'published'
+    const listingPerformanceList = listings.map((l) => ({
+      id: l.id,
+      title: l.title,
+      views: l.views_count ?? 0,
+      saves: 0,
+      inquiries: 0,
+      status: l.status
     }));
 
     return {
       listingViews,
-      savesCount,
-      buyerInquiries,
-      conversionMetrics: {
-        ndaRequestsTotal,
-        ndaApprovedCount,
-        inquiryConversionRate,
-        savesToInquiriesRate
-      },
+      savesCount: 0,
+      buyerInquiries: 0,
+      conversionMetrics: { ndaRequestsTotal, ndaApprovedCount, savesToInquiriesRate: 0 },
       listingPerformanceList
     };
   }
