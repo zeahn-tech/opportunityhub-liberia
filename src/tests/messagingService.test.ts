@@ -33,9 +33,15 @@ vi.mock('../services/notificationService', () => ({
   }
 }));
 
-vi.mock('../db/dbClient', () => ({
-  db: {
-    createMessageReport: vi.fn((data: unknown) => ({ id: 'report-1', ...(data as object), status: 'pending', createdAt: new Date().toISOString() }))
+vi.mock('../services/trustSafetyService', () => ({
+  trustSafetyService: {
+    submitReport: vi.fn(async (data: unknown) => ({
+      id: 'report-1',
+      reporterUserId: 'user-1',
+      status: 'pending',
+      details: (data as { details: string }).details,
+      createdAt: new Date().toISOString()
+    }))
   }
 }));
 
@@ -202,19 +208,21 @@ describe('messagingService', () => {
     expect(res.data!.reason).toBe('spam');
   });
 
-  it('reportConversation(): still delegates to dbClient (no message_reports table exists yet)', async () => {
+  it('reportConversation(): delegates to trustSafetyService.submitReport() (folded into Service 8s content_reports)', async () => {
     const { messagingService } = await import('../services/messagingService');
-    const { db } = await import('../db/dbClient');
+    const { trustSafetyService } = await import('../services/trustSafetyService');
 
     const res = await messagingService.reportConversation({
       conversationId: 'conv-1',
       reporterUserId: 'user-1',
       reportedUserId: 'user-2',
-      reason: 'spam',
+      reason: 'fraud_scam',
       details: 'Sending unsolicited ads.'
     });
 
-    expect(db.createMessageReport).toHaveBeenCalled();
+    expect(trustSafetyService.submitReport).toHaveBeenCalledWith(
+      expect.objectContaining({ reportType: 'message', targetId: 'user-2', reason: 'scam_fee_charging' })
+    );
     expect(res.data!.id).toBe('report-1');
     expect(mockFrom).not.toHaveBeenCalled();
   });

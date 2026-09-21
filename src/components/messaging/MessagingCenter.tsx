@@ -22,7 +22,6 @@ import {
 import { Conversation, DirectMessage, MessageAttachment, ConversationCategory, MessageReport, UserRole } from '../../types';
 import { messagingService } from '../../services/messagingService';
 import { authService } from '../../services/authService';
-import { db } from '../../db/dbClient';
 
 interface MessagingCenterProps {
   initialConversationId?: string;
@@ -206,7 +205,8 @@ export const MessagingCenter: React.FC<MessagingCenterProps> = ({ initialConvers
     setNewMsgError('');
     if (!currentUser) return;
 
-    const targetUser = db.getUserByEmail(newMsgRecipientEmail.trim());
+    const targetUserRes = await messagingService.findUserByEmail(newMsgRecipientEmail.trim());
+    const targetUser = targetUserRes.data;
     if (!targetUser) {
       setNewMsgError('User not found. Please check the email address.');
       return;
@@ -231,7 +231,7 @@ export const MessagingCenter: React.FC<MessagingCenterProps> = ({ initialConvers
           {
             userId: targetUser.id,
             name: targetUser.fullName,
-            email: targetUser.email,
+            email: newMsgRecipientEmail.trim(),
             role: targetUser.primaryRole as UserRole
           }
         ],

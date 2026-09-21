@@ -71,7 +71,7 @@ function AppContent() {
   const [isLoadingFeed, setIsLoadingFeed] = useState(false);
 
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
-  const [businesses, setBusinesses] = useState<BusinessListing[]>(() => db.getBusinesses());
+  const [businesses, setBusinesses] = useState<BusinessListing[]>([]);
   const [audits, setAudits] = useState<VerificationAudit[]>([]);
   const [applications, setApplications] = useState<Application[]>([]);
 
@@ -126,11 +126,25 @@ function AppContent() {
     }
   };
 
+  // Business listings now live in Supabase too (Phase 3, Service 5 --
+  // see docs/PHASE3_SERVICE5_VERIFICATION.md). businessService.list()
+  // calls the redaction-aware RPC directly, so confidential listings
+  // arrive already teaser-only for an unauthorized viewer.
+  const refreshBusinesses = async () => {
+    const res = await businessService.list();
+    if (res.data) {
+      setBusinesses(res.data);
+    } else if (res.error) {
+      showToast(res.error.message, 'error');
+    }
+  };
+
   // All useEffect hooks
   useEffect(() => {
     refreshOpportunities();
     refreshApplications();
     refreshAudits();
+    refreshBusinesses();
   }, []);
 
   // Active Tab synchronized with route path
@@ -298,7 +312,7 @@ function AppContent() {
   const handleAccessApproved = async (bizId: string) => {
     const res = await businessService.requestNdaAccess(bizId);
     if (res.data) {
-      setBusinesses(db.getBusinesses());
+      await refreshBusinesses();
       showToast('Non-Disclosure Agreement signed! Confidential data room unlocked.');
     } else if (res.error) {
       showToast(res.error.message, 'error');
@@ -508,7 +522,7 @@ function AppContent() {
             currency={currency}
             onAccessApproved={handleAccessApproved}
             currentUserId={user?.id}
-            onRefresh={() => setBusinesses(db.getBusinesses())}
+            onRefresh={() => refreshBusinesses()}
           />
         )}
 

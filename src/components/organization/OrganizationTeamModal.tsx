@@ -17,7 +17,7 @@ import {
 import { Organization, OrganizationMembership, OrganizationInvitation, OrgRole } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
-import { db } from '../../db/dbClient';
+import { organizationService } from '../../services/organizationService';
 import { Button } from '../../design-system/Button';
 
 interface OrganizationTeamModalProps {
@@ -36,6 +36,7 @@ export const OrganizationTeamModal: React.FC<OrganizationTeamModalProps> = ({
 
   const [members, setMembers] = useState<OrganizationMembership[]>([]);
   const [invitations, setInvitations] = useState<OrganizationInvitation[]>([]);
+  const [memberProfiles, setMemberProfiles] = useState<Record<string, { fullName: string; avatarUrl?: string; email: string }>>({});
   const [isLoading, setIsLoading] = useState(false);
 
   // Invite Form
@@ -43,15 +44,18 @@ export const OrganizationTeamModal: React.FC<OrganizationTeamModalProps> = ({
   const [inviteRole, setInviteRole] = useState<OrgRole>('recruiter');
   const [isSendingInvite, setIsSendingInvite] = useState(false);
 
-  const loadData = () => {
+  const loadData = async () => {
     if (!organization || !user) return;
     try {
       setIsLoading(true);
-      const mems = db.getOrganizationMembers(organization.id, user.id);
+      const [mems, orgInvs, profiles] = await Promise.all([
+        organizationService.getOrganizationMembers(organization.id),
+        organizationService.getOrganizationInvitations(organization.id),
+        organizationService.getMemberProfiles(organization.id)
+      ]);
       setMembers(mems);
-
-      const orgInvs = db.getOrganizationInvitations(organization.id, user.id);
       setInvitations(orgInvs);
+      setMemberProfiles(profiles);
     } catch (err: unknown) {
       // Non-blocking error
     } finally {
@@ -74,7 +78,7 @@ export const OrganizationTeamModal: React.FC<OrganizationTeamModalProps> = ({
     try {
       setIsSendingInvite(true);
       const perms = inviteRole === 'admin' ? ['all'] : ['opportunities.create', 'applications.view'];
-      db.createInvitation(organization.id, inviteEmail.trim().toLowerCase(), inviteRole, perms, user.id);
+      await organizationService.createInvitation(organization.id, inviteEmail.trim().toLowerCase(), inviteRole, perms);
       showToast(`Invitation dispatched to ${inviteEmail.trim()}.`, 'success');
       setInviteEmail('');
       loadData();
@@ -85,10 +89,10 @@ export const OrganizationTeamModal: React.FC<OrganizationTeamModalProps> = ({
     }
   };
 
-  const handleSuspend = (membershipId: string, memberUserId: string) => {
+  const handleSuspend = async (membershipId: string) => {
     if (!user) return;
     try {
-      db.suspendMember(organization.id, memberUserId, user.id);
+      await organizationService.suspendMember(membershipId);
       showToast('Member suspended from workspace.', 'info');
       loadData();
     } catch (err: unknown) {
@@ -96,10 +100,10 @@ export const OrganizationTeamModal: React.FC<OrganizationTeamModalProps> = ({
     }
   };
 
-  const handleReactivate = (membershipId: string, memberUserId: string) => {
+  const handleReactivate = async (membershipId: string) => {
     if (!user) return;
     try {
-      db.reactivateMember(organization.id, memberUserId, user.id);
+      await organizationService.reactivateMember(membershipId);
       showToast('Member access reactivated.', 'success');
       loadData();
     } catch (err: unknown) {
@@ -107,10 +111,10 @@ export const OrganizationTeamModal: React.FC<OrganizationTeamModalProps> = ({
     }
   };
 
-  const handleRemoveMember = (membershipId: string) => {
+  const handleRemoveMember = async (membershipId: string) => {
     if (!user) return;
     try {
-      db.removeMember(organization.id, membershipId, user.id);
+      await organizationService.removeMember(membershipId);
       showToast('Member removed from workspace.', 'info');
       loadData();
     } catch (err: unknown) {
@@ -118,9 +122,9 @@ export const OrganizationTeamModal: React.FC<OrganizationTeamModalProps> = ({
     }
   };
 
-  const handleRevokeInvite = (token: string) => {
+  const handleRevokeInvite = async (invitationId: string) => {
     try {
-      db.revokeInvitation(token);
+      await organizationService.revokeInvitation(invitationId);
       showToast('Invitation revoked.', 'info');
       loadData();
     } catch (err: unknown) {
@@ -211,7 +215,7 @@ export const OrganizationTeamModal: React.FC<OrganizationTeamModalProps> = ({
 
             <div className="space-y-2">
               {members.map((mem) => {
-                const memberUser = db.getUserById(mem.userId);
+                const memberUser = memberProfiles[mem.userId];
                 const isCurrentUser = mem.userId === user?.id;
                 const isSuspended = mem.status === 'suspended';
 
@@ -257,14 +261,14 @@ export const OrganizationTeamModal: React.FC<OrganizationTeamModalProps> = ({
                       <div className="flex items-center gap-2">
                         {isSuspended ? (
                           <button
-                            onClick={() => handleReactivate(mem.id, mem.userId)}
+                            onClick={() => handleReactivate(mem.id)}
                             className="px-2.5 py-1 text-[11px] font-bold bg-[#ECF3E9] text-[#283618] hover:bg-[#DEEBD8] rounded-lg transition-colors cursor-pointer"
                           >
                             Reactivate
                           </button>
                         ) : (
                           <button
-                            onClick={() => handleSuspend(mem.id, mem.userId)}
+                            onClick={() => handleSuspend(mem.id)}
                             className="px-2.5 py-1 text-[11px] font-bold bg-amber-100 text-amber-900 hover:bg-amber-200 rounded-lg transition-colors cursor-pointer"
                           >
                             Suspend
@@ -310,7 +314,7 @@ export const OrganizationTeamModal: React.FC<OrganizationTeamModalProps> = ({
                       </div>
                     </div>
                     <button
-                      onClick={() => handleRevokeInvite(inv.token)}
+                      onClick={() => handleRevokeInvite(inv.id)}
                       className="text-stone-400 hover:text-red-600 p-1 cursor-pointer"
                       title="Revoke invitation"
                     >

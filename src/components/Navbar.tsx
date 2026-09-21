@@ -25,7 +25,7 @@ import { NotificationCenterModal } from './notifications/NotificationCenterModal
 import { OrganizationSwitcher } from './organization/OrganizationSwitcher';
 import { OrganizationWizardModal } from './organization/OrganizationWizardModal';
 import { OrganizationTeamModal } from './organization/OrganizationTeamModal';
-import { db } from '../db/dbClient';
+import { notificationService } from '../services/notificationService';
 import { PWAInstallButton } from './pwa/PWAInstallButton';
 import { envConfig } from '../config/env';
 
@@ -61,8 +61,11 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   useEffect(() => {
     if (user) {
-      const notifs = db.getNotificationsForUser(user.id);
-      setUnreadNotifCount(notifs.filter((n) => !n.isRead).length);
+      notificationService.getUserNotifications(user.id).then((res) => {
+        if (res.data) {
+          setUnreadNotifCount(res.data.filter((n) => !n.isRead).length);
+        }
+      });
     }
   }, [user?.id, showNotificationsModal]);
 

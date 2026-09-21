@@ -25,11 +25,10 @@
  * This service does not re-check either; it lets Postgres decide and
  * surfaces a denial as a normal ApiResponse error.
  *
- * NOT covered by this service (flagged, not silently dropped):
- * reportConversation() has no backing table (`message_reports` doesn't
- * exist) -- message/user reporting is fundamentally a trust & safety
- * concern and is left for trustSafetyService (Service 8) to own,
- * still dbClient-backed for now.
+ * reportConversation() delegates to trustSafetyService.submitReport(),
+ * which writes to Service 8's content_reports table (report_type =
+ * 'message') -- that table was already designed to cover message
+ * reports, so no new schema was needed here.
  */
 
 import {
@@ -42,11 +41,11 @@ import {
   UserBlock,
   UserRole
 } from '../types';
-import { db } from '../db/dbClient';
 import { getSupabaseClient } from '../lib/supabaseClient';
 import { apiClient, ApiResponse } from './apiClient';
 import { authService } from './authService';
 import { notificationService } from './notificationService';
+import { trustSafetyService } from './trustSafetyService';
 import { ForbiddenError, UnauthorizedError, ValidationError } from '../core/errors/AppError';
 
 interface ConversationRow {
@@ -383,6 +382,22 @@ export const messagingService = {
     });
   },
 
+  /**
+   * Resolves an exact email to a minimal user profile (id/name/role) via
+   * find_user_by_email() -- `users` RLS is self-only, so this is the only
+   * way to start a new conversation by email. See
+   * supabase/migrations/20260912110000_find_user_by_email.sql.
+   */
+  async findUserByEmail(email: string): Promise<ApiResponse<{ id: string; fullName: string; primaryRole?: string } | null>> {
+    return apiClient.execute(async () => {
+      const { data, error } = await client().rpc('find_user_by_email', { p_email: email });
+      if (error) throw new Error(error.message);
+      const rows = (data as { user_id: string; full_name: string; primary_role: string | null }[]) || [];
+      if (rows.length === 0) return null;
+      return { id: rows[0].user_id, fullName: rows[0].full_name, primaryRole: rows[0].primary_role ?? undefined };
+    });
+  },
+
   async getBlockedUsers(userId: string): Promise<ApiResponse<UserBlock[]>> {
     return apiClient.execute(async () => {
       const { data, error } = await client().from('user_blocks').select('*').eq('blocking_user_id', userId);
@@ -398,8 +413,11 @@ export const messagingService = {
   },
 
   // ---------------------------------------------------------------------
-  // NOT migrated -- no backing Supabase table yet (message_reports).
-  // See this file's header comment.
+  // Message/conversation reporting is folded into Service 8's
+  // content_reports table (report_type = 'message') -- that table was
+  // already designed to cover it, so no new schema was needed. See
+  // supabase/migrations/20260912090000_deferred_features_backend.sql's
+  // header comment and docs/PHASE3_SERVICE6_VERIFICATION.md.
   // ---------------------------------------------------------------------
   async reportConversation(data: {
     conversationId: string;
@@ -409,6 +427,38 @@ export const messagingService = {
     reason: MessageReport['reason'];
     details: string;
   }): Promise<ApiResponse<MessageReport>> {
-    return apiClient.execute(() => db.createMessageReport(data));
+    return apiClient.execute(async () => {
+      // ContentReportReason has no 'fraud_scam' value; 'scam_fee_charging'
+      // is the closest existing category. Everything else maps 1:1.
+      const reasonMap: Record<MessageReport['reason'], import('../types').ContentReportReason> = {
+        spam: 'spam',
+        harassment: 'harassment',
+        fraud_scam: 'scam_fee_charging',
+        inappropriate_content: 'inappropriate_content',
+        other: 'other'
+      };
+
+      const report = await trustSafetyService.submitReport({
+        reportType: 'message',
+        targetId: data.reportedUserId,
+        targetTitleOrName: data.messageId
+          ? `Message ${data.messageId} in conversation ${data.conversationId}`
+          : `Conversation ${data.conversationId}`,
+        reason: reasonMap[data.reason],
+        details: data.details
+      });
+
+      return {
+        id: report.id,
+        conversationId: data.conversationId,
+        messageId: data.messageId,
+        reporterUserId: report.reporterUserId,
+        reportedUserId: data.reportedUserId,
+        reason: data.reason,
+        details: report.details,
+        status: report.status === 'dismissed' ? 'dismissed' : report.status === 'actioned' ? 'resolved' : 'pending',
+        createdAt: report.createdAt
+      };
+    });
   }
 };

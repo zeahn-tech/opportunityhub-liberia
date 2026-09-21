@@ -25,12 +25,6 @@
  * surfaces that as a thrown AppError subclass rather than swallowing it.
  *
  * NOT yet covered by this service (flagged, not silently dropped):
- *   - Organization invitations (`createInvitation` et al. in dbClient.ts).
- *     There is no `organization_invitations` table in the Supabase schema
- *     yet (see `supabase/migrations/`) -- adding one is a schema decision
- *     out of scope for "migrate reads/writes to existing tables" and is
- *     left for a follow-up migration. Invitation flows still read/write
- *     dbClient's local store until that table exists.
  *   - `assertUserInTenant`'s rich return shape (a full membership object
  *     with a synthesized platform_admin override) is NOT reproduced here.
  *     Platform-admin governance override across all orgs is an
@@ -41,6 +35,16 @@
  *     membership exists. Not added here because no such policy exists yet
  *     in the schema; flagged for whoever wires this service into
  *     authService/permissionEngine next.
+ *
+ * Invitations (createInvitation/acceptInvitation/etc. below) are backed by
+ * public.organization_invitations (see
+ * supabase/migrations/20260912090000_deferred_features_backend.sql).
+ * Accepting has the same chicken-and-egg shape as organization creation
+ * (Service 1's own RPC): the invitee has no membership row yet, so a
+ * membership-scoped RLS policy can't authorize them adding themselves --
+ * accept_organization_invitation() is a SECURITY DEFINER RPC that
+ * validates the token against the CALLER's own verified email (never a
+ * client-supplied email) and creates the membership atomically.
  */
 
 import { getSupabaseClient } from '../lib/supabaseClient';
@@ -52,6 +56,7 @@ import {
 } from '../core/errors/AppError';
 import type {
   Organization,
+  OrganizationInvitation,
   OrganizationMembership,
   OrganizationSettings,
   OrganizationType,
@@ -146,6 +151,44 @@ function rowToMembership(row: MembershipRow): OrganizationMembership {
     updatedAt: row.updated_at ?? undefined
   };
 }
+
+interface InvitationRow {
+  id: string;
+  organization_id: string;
+  inviter_user_id: string;
+  invitee_email: string;
+  org_role: string;
+  permissions: (OrgPermission | string)[];
+  token: string;
+  status: string;
+  expires_at: string;
+  created_at: string;
+  responded_at: string | null;
+  notes: string | null;
+  organizations?: { name: string } | null;
+  users?: { full_name: string } | null;
+}
+
+function rowToInvitation(row: InvitationRow): OrganizationInvitation {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    organizationName: row.organizations?.name || '',
+    inviterUserId: row.inviter_user_id,
+    inviterName: row.users?.full_name || '',
+    inviteeEmail: row.invitee_email,
+    orgRole: row.org_role as OrgRole,
+    permissions: row.permissions || [],
+    token: row.token,
+    status: row.status as OrganizationInvitation['status'],
+    expiresAt: row.expires_at,
+    createdAt: row.created_at,
+    respondedAt: row.responded_at ?? undefined,
+    notes: row.notes ?? undefined
+  };
+}
+
+const SELECT_INVITATION_WITH_JOINS = '*, organizations(name), users!organization_invitations_inviter_user_id_fkey(full_name)';
 
 function client() {
   const c = getSupabaseClient();
@@ -370,6 +413,27 @@ export const organizationService = {
     return (data as MembershipRow[]).map(rowToMembership);
   },
 
+  /**
+   * Display profiles (name/avatar/email) for an org's members. `users`
+   * RLS restricts SELECT to self only, so this goes through
+   * get_organization_member_profiles() -- a narrow RPC (same pattern as
+   * messagingService's get_conversation_participant_profiles) rather
+   * than widening users' RLS to expose full rows to co-members.
+   */
+  async getMemberProfiles(
+    organizationId: string
+  ): Promise<Record<string, { fullName: string; avatarUrl?: string; email: string }>> {
+    const { data, error } = await client().rpc('get_organization_member_profiles', {
+      p_organization_id: organizationId
+    });
+    if (error) translateError(error);
+    const map: Record<string, { fullName: string; avatarUrl?: string; email: string }> = {};
+    ((data as { user_id: string; full_name: string; avatar_url: string | null; email: string }[]) || []).forEach((p) => {
+      map[p.user_id] = { fullName: p.full_name, avatarUrl: p.avatar_url ?? undefined, email: p.email };
+    });
+    return map;
+  },
+
   /** Requires the caller to already be an org admin/owner -- enforced by "Org admins can manage memberships" RLS, not re-checked here. */
   async addMember(
     organizationId: string,
@@ -439,6 +503,89 @@ export const organizationService = {
   async removeMember(membershipId: string): Promise<void> {
     // The owner-invariant trigger rejects removing the sole owner with 23514.
     const { error } = await client().from('organization_memberships').delete().eq('id', membershipId);
+    if (error) translateError(error);
+  },
+
+  // ---------------------------------------------------------------------
+  // Invitations (closes the gap flagged in this file's header comment and
+  // docs/PHASE3_SERVICE1_VERIFICATION.md -- see
+  // supabase/migrations/20260912090000_deferred_features_backend.sql for
+  // the schema/RLS/RPC this section depends on).
+  // ---------------------------------------------------------------------
+
+  async createInvitation(
+    organizationId: string,
+    inviteeEmail: string,
+    orgRole: OrgRole,
+    permissions: (OrgPermission | string)[] = []
+  ): Promise<OrganizationInvitation> {
+    const {
+      data: { user }
+    } = await client().auth.getUser();
+    if (!user) throw new UnauthorizedError('Sign in required to send an invitation.');
+
+    const emailNorm = inviteeEmail.toLowerCase().trim();
+    if (!emailNorm.includes('@') || !emailNorm.includes('.')) {
+      throw new ValidationError('Valid email address is required for invitation.');
+    }
+
+    const id = `inv-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const { data, error } = await client()
+      .from('organization_invitations')
+      .insert({
+        id,
+        organization_id: organizationId,
+        inviter_user_id: user.id,
+        invitee_email: emailNorm,
+        org_role: orgRole,
+        permissions,
+        token: `inv_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`,
+        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+      })
+      .select(SELECT_INVITATION_WITH_JOINS)
+      .maybeSingle();
+    if (error) translateError(error);
+    return rowToInvitation(data as InvitationRow);
+  },
+
+  async getOrganizationInvitations(organizationId: string): Promise<OrganizationInvitation[]> {
+    const { data, error } = await client()
+      .from('organization_invitations')
+      .select(SELECT_INVITATION_WITH_JOINS)
+      .eq('organization_id', organizationId);
+    if (error) translateError(error);
+    return (data as InvitationRow[]).map(rowToInvitation);
+  },
+
+  /** Returns pending invitations addressed to the CALLER's own verified email -- RLS enforces this regardless of what's passed. */
+  async getMyPendingInvitations(): Promise<OrganizationInvitation[]> {
+    const { data, error } = await client()
+      .from('organization_invitations')
+      .select(SELECT_INVITATION_WITH_JOINS)
+      .eq('status', 'pending');
+    if (error) translateError(error);
+    return (data as InvitationRow[]).map(rowToInvitation);
+  },
+
+  async acceptInvitation(token: string): Promise<OrganizationMembership> {
+    const { data, error } = await client().rpc('accept_organization_invitation', { p_token: token });
+    if (error) translateError(error);
+    return rowToMembership(data as MembershipRow);
+  },
+
+  async declineInvitation(invitationId: string): Promise<void> {
+    const { error } = await client()
+      .from('organization_invitations')
+      .update({ status: 'rejected' })
+      .eq('id', invitationId);
+    if (error) translateError(error);
+  },
+
+  async revokeInvitation(invitationId: string): Promise<void> {
+    const { error } = await client()
+      .from('organization_invitations')
+      .update({ status: 'revoked' })
+      .eq('id', invitationId);
     if (error) translateError(error);
   }
 };

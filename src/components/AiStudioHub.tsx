@@ -19,11 +19,20 @@ import { aiService, AIAuditLogEntry } from '../services/ai/aiService';
 import { AiCandidateMatchModal } from './candidate/AiCandidateMatchModal';
 import { AiCvParserModal } from './candidate/AiCvParserModal';
 import { AiJobRecommendationsWidget } from './candidate/AiJobRecommendationsWidget';
-import { db } from '../db/dbClient';
+import { opportunityService } from '../services/opportunityService';
 import { ParsedCVResult } from '../services/ai/aiTypes';
 
 export const AiStudioHub: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'overview' | 'recommendations' | 'match' | 'cv_parser' | 'job_drafter' | 'audit_logs'>('overview');
+  const [previewOpportunities, setPreviewOpportunities] = useState<import('../types').Opportunity[]>([]);
+
+  useEffect(() => {
+    if (activeTab === 'recommendations') {
+      opportunityService.list().then((res) => {
+        if (res.data) setPreviewOpportunities(res.data);
+      });
+    }
+  }, [activeTab]);
   const [auditLogs, setAuditLogs] = useState<AIAuditLogEntry[]>([]);
   const [activeProviderName, setActiveProviderName] = useState<string>('Detecting provider...');
   const [loadingProvider, setLoadingProvider] = useState(true);
@@ -290,7 +299,7 @@ export const AiStudioHub: React.FC = () => {
 
           <AiJobRecommendationsWidget
             candidateProfile={sampleCandidate}
-            opportunities={db.getOpportunities()}
+            opportunities={previewOpportunities}
           />
         </div>
       )}

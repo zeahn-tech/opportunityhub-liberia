@@ -21,7 +21,8 @@ import { County, Organization, OrganizationType, OrgRole } from '../../types';
 import { LIBERIAN_COUNTIES } from '../../data/seedData';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
-import { db } from '../../db/dbClient';
+import { organizationService } from '../../services/organizationService';
+import { verificationService } from '../../services/verificationService';
 import { Button } from '../../design-system/Button';
 
 interface OrganizationWizardModalProps {
@@ -217,47 +218,52 @@ export const OrganizationWizardModal: React.FC<OrganizationWizardModalProps> = (
         .join('')
         .toUpperCase() || 'OH';
 
-      const newOrg = db.createOrganization(
-        {
-          name: name.trim(),
-          slug,
-          type: orgType,
-          industry,
-          county,
-          cityDistrict: cityDistrict.trim() || 'Monrovia',
-          logoText,
-          description: description.trim(),
-          website: website.trim() || undefined,
-          contactEmail: contactEmail.trim(),
-          contactPhone: contactPhone.trim(),
-          registrationNumber: registrationNumber.trim() || undefined,
-          taxIdNumber: taxIdNumber.trim() || undefined,
-          isVerified: false,
-          verificationStatus: requestVerificationNow && (registrationNumber.trim() || taxIdNumber.trim()) ? 'pending' : 'unverified',
-          settings: {
-            defaultCurrency,
-            candidateAlertEmail: contactEmail.trim(),
-            lowBandwidthDefault,
-            isPubliclyListed,
-            notifyOnApplications,
-            requireCoverNote
-          }
-        },
-        user.id
-      );
+      const newOrg = await organizationService.createOrganization({
+        name: name.trim(),
+        slug,
+        type: orgType,
+        industry,
+        county,
+        cityDistrict: cityDistrict.trim() || 'Monrovia',
+        logoText,
+        description: description.trim(),
+        website: website.trim() || undefined,
+        contactEmail: contactEmail.trim(),
+        contactPhone: contactPhone.trim(),
+        settings: {
+          defaultCurrency,
+          candidateAlertEmail: contactEmail.trim(),
+          lowBandwidthDefault,
+          isPubliclyListed,
+          notifyOnApplications,
+          requireCoverNote
+        }
+      });
 
-      // 2. If verification requested with notes, log verification request
+      if (registrationNumber.trim() || taxIdNumber.trim()) {
+        try {
+          await organizationService.updateOrganizationProfile(newOrg.id, {
+            registrationNumber: registrationNumber.trim() || undefined,
+            taxIdNumber: taxIdNumber.trim() || undefined
+          });
+        } catch {
+          // Non-blocking -- the org itself was created successfully.
+        }
+      }
+
+      // 2. If verification requested with notes, submit a verification audit
       if (requestVerificationNow && (registrationNumber.trim() || taxIdNumber.trim())) {
         try {
-          db.requestOrganizationVerification(
-            newOrg.id,
-            {
-              registrationNumber: registrationNumber.trim() || 'SUBMITTED',
-              taxIdNumber: taxIdNumber.trim() || 'SUBMITTED',
-              documentNotes: documentNotes.trim() || 'Initial registration documentation provided during workspace setup.'
-            },
-            user.id
-          );
+          await verificationService.submit({
+            organizationId: newOrg.id,
+            organizationName: newOrg.name,
+            organizationType: newOrg.type,
+            county: newOrg.county,
+            registryNumber: registrationNumber.trim() || 'SUBMITTED',
+            taxIdNumber: taxIdNumber.trim() || 'SUBMITTED',
+            badgeRequested: 'verified_business',
+            documents: documentNotes.trim() ? [documentNotes.trim()] : []
+          });
         } catch {
           // Non-blocking
         }
@@ -266,12 +272,11 @@ export const OrganizationWizardModal: React.FC<OrganizationWizardModalProps> = (
       // 3. Send out initial team invitations
       for (const inv of invites) {
         try {
-          db.createInvitation(
+          await organizationService.createInvitation(
             newOrg.id,
             inv.email,
             inv.role,
-            inv.role === 'admin' ? ['all'] : ['opportunities.create', 'applications.view'],
-            user.id
+            inv.role === 'admin' ? ['all'] : ['opportunities.create', 'applications.view']
           );
         } catch {
           // Non-blocking for batch invites
@@ -279,7 +284,7 @@ export const OrganizationWizardModal: React.FC<OrganizationWizardModalProps> = (
       }
 
       // 4. Switch session to new organization
-      switchOrganization(newOrg.id);
+      await switchOrganization(newOrg.id);
       refreshOrganizations();
 
       showToast(`Workspace "${newOrg.name}" established successfully!`, 'success');

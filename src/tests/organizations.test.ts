@@ -314,26 +314,22 @@ describe('Multi-Tenant Organization System & Tenant Isolation', () => {
     expect(initialSession.user?.email).toBe('hiring@savethechildren.lr');
 
     // Authorized switch to org-save-children succeeds
-    const switchedSession = authService.switchOrganization('org-save-children');
+    const switchedSession = await authService.switchOrganization('org-save-children');
     expect(switchedSession.activeOrganization?.id).toBe('org-save-children');
     // CRITICAL: authenticated user identity NEVER changes
     expect(switchedSession.user?.id).toBe(employer!.id);
     expect(switchedSession.user?.email).toBe('hiring@savethechildren.lr');
 
     // Switch to null (clearing active organization) preserves identity
-    const clearedSession = authService.switchOrganization(null);
+    const clearedSession = await authService.switchOrganization(null);
     expect(clearedSession.activeOrganization).toBeNull();
     expect(clearedSession.user?.id).toBe(employer!.id);
 
     // Unauthorized switch to org-mpw-gov MUST be rejected with ForbiddenError
-    expect(() => {
-      authService.switchOrganization('org-mpw-gov');
-    }).toThrow(ForbiddenError);
+    await expect(authService.switchOrganization('org-mpw-gov')).rejects.toThrow(ForbiddenError);
 
     // Non-existent organization throws NotFoundError
-    expect(() => {
-      authService.switchOrganization('org-non-existent');
-    }).toThrow(NotFoundError);
+    await expect(authService.switchOrganization('org-non-existent')).rejects.toThrow(NotFoundError);
 
     // Verify session user identity remained completely unchanged
     expect(authService.getSession().user?.id).toBe(employer!.id);
@@ -378,9 +374,7 @@ describe('Multi-Tenant Organization System & Tenant Isolation', () => {
 
     // Collaborator cannot switch to org-save-children
     await authService.login('temp.collaborator@savethechildren.lr', 'SecurePass123!');
-    expect(() => {
-      authService.switchOrganization('org-save-children');
-    }).toThrow(ForbiddenError);
+    await expect(authService.switchOrganization('org-save-children')).rejects.toThrow(ForbiddenError);
   });
 
   it('ensures member suspension immediately revokes tenant access until reactivated', async () => {

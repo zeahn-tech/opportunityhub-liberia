@@ -32,7 +32,6 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { db } from '../db/dbClient';
 import { applicationService } from '../services/applicationService';
 import { candidateService } from '../services/candidateService';
 import { CandidateProfileDrawer } from './candidate/CandidateProfileDrawer';

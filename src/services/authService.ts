@@ -94,8 +94,77 @@ function emptySession(): AuthSession {
 class AuthService {
   private currentSession: AuthSession;
 
+  /**
+   * For a REAL (non-demo) session, `getAuthorizationContext()` (and thus
+   * the synchronous `can()` permission check used throughout the render
+   * tree) needs the caller's membership/subscription for the active
+   * organization on every call -- but it must stay synchronous, since
+   * `can()` is called inline in JSX all over the app
+   * (`{can('x') && <Button/>}`), and making that async would mean
+   * rewriting every permission-gated element in the codebase, not just
+   * this service.
+   *
+   * The fix used here: these two fields are a synchronous CACHE, kept
+   * current by `refreshOrgContext()` (async, backed by organizationService/
+   * subscriptionService -- real Supabase data) at the specific moments
+   * the active organization can change (session hydration, login,
+   * register, switchOrganization). `getAuthorizationContext()` reads the
+   * cache instead of re-querying anything itself, so it stays
+   * synchronous without ever touching stale or fabricated data for a
+   * real session. Demo-mode sessions don't use this cache at all --
+   * they read dbClient.ts synchronously and directly, unchanged, exactly
+   * as before this fix (demo mode is explicitly meant to stay local).
+   */
+  private cachedActiveMembership: OrganizationMembership | null = null;
+  private cachedSubscription: import('../types').OrganizationSubscription | null = null;
+  private cachedUserOrganizations: Array<Organization & { membership: OrganizationMembership }> = [];
+
   constructor() {
     this.currentSession = this.loadInitialSession();
+  }
+
+  /**
+   * Refreshes the real-session org-context cache from Supabase. No-op for
+   * demo sessions (dbClient remains their synchronous source of truth,
+   * queried live by getAuthorizationContext/getUserOrganizations/
+   * getActiveMembership for that path, unchanged). Failures are swallowed
+   * deliberately -- a stale/empty cache degrades permission checks to "no
+   * org-scoped permissions" rather than throwing during session hydration.
+   */
+  private async refreshOrgContext(): Promise<void> {
+    if (this.currentSession.isDemoMode || !this.currentSession.user) {
+      return;
+    }
+    const userId = this.currentSession.user.id;
+    const orgId = this.currentSession.activeOrganization?.id;
+
+    try {
+      const { organizationService } = await import('./organizationService');
+      this.cachedUserOrganizations = await organizationService.getUserOrganizations(userId);
+
+      if (orgId) {
+        this.cachedActiveMembership = await organizationService.getUserMembership(orgId, userId);
+      } else {
+        this.cachedActiveMembership = null;
+      }
+    } catch (err) {
+      logger.warn('authService', 'refreshOrgContext: failed to load organization membership from Supabase', { error: err instanceof Error ? err.message : String(err) });
+      this.cachedActiveMembership = null;
+      this.cachedUserOrganizations = [];
+    }
+
+    try {
+      if (orgId) {
+        const { subscriptionService } = await import('./subscriptionService');
+        const res = await subscriptionService.getOrganizationSubscription(orgId);
+        this.cachedSubscription = res.data ?? null;
+      } else {
+        this.cachedSubscription = null;
+      }
+    } catch (err) {
+      logger.warn('authService', 'refreshOrgContext: failed to load subscription from Supabase', { error: err instanceof Error ? err.message : String(err) });
+      this.cachedSubscription = null;
+    }
   }
 
   private loadInitialSession(): AuthSession {
@@ -230,9 +299,19 @@ class AuthService {
     }
 
     let activeOrg: Organization | null = null;
-    const memberships = db.getMembershipsByUserId(user.id);
-    if (memberships.length > 0) {
-      activeOrg = db.getOrganizationById(memberships[0].organizationId);
+    try {
+      const { organizationService } = await import('./organizationService');
+      const memberships = await organizationService.getMembershipsByUserId(user.id);
+      if (memberships.length > 0) {
+        activeOrg = await organizationService.getOrganizationById(memberships[0].organizationId);
+      }
+    } catch (err) {
+      // Falls back to no active organization rather than blocking sign-in
+      // on a transient Supabase read failure; refreshOrgContext() below
+      // will retry the full cache population anyway.
+      logger.warn('authService', 'Failed to load organization membership from Supabase during session hydration', {
+        error: err instanceof Error ? err.message : String(err)
+      });
     }
 
     const session: AuthSession = {
@@ -246,6 +325,7 @@ class AuthService {
 
     this.currentSession = session;
     storageAdapter.setItem(SESSION_STORAGE_KEY, this.currentSession);
+    await this.refreshOrgContext();
     return this.currentSession;
   }
 
@@ -345,23 +425,44 @@ class AuthService {
       }
 
       if (params.organizationName) {
-        // Org creation still lives in dbClient this phase; wire it to the
-        // real Supabase user id rather than a locally-generated one.
-        db.createOrganization(
-          {
-            name: params.organizationName,
-            slug: params.organizationName.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
-            type: 'private_company',
-            industry: 'General Commerce',
-            county: params.primaryCounty || 'Montserrado',
-            cityDistrict: 'Monrovia',
-            logoText: params.organizationName.substring(0, 2).toUpperCase(),
-            description: `${params.organizationName} - Registered enterprise.`,
-            isVerified: false,
-            verificationStatus: 'unverified'
-          },
-          data.user.id
-        );
+        if (data.session) {
+          // A session is immediately active (no email confirmation
+          // required), so organizationService's RLS-backed
+          // create_organization_with_owner RPC can run as this real user
+          // right now -- creates the org AND grants ownership atomically
+          // in Supabase, not dbClient's local store.
+          try {
+            const { organizationService } = await import('./organizationService');
+            await organizationService.createOrganization({
+              name: params.organizationName,
+              type: 'private_company',
+              industry: 'General Commerce',
+              county: params.primaryCounty || 'Montserrado',
+              cityDistrict: 'Monrovia',
+              description: `${params.organizationName} - Registered enterprise.`
+            });
+          } catch (err) {
+            // Registration itself already succeeded (the Supabase Auth
+            // user exists) -- an org-creation failure here shouldn't
+            // block sign-up, but must not be silently swallowed either.
+            logger.warn('authService', 'Failed to create organization during registration', {
+              error: err instanceof Error ? err.message : String(err)
+            });
+          }
+        } else {
+          // data.session is null: Supabase requires email confirmation
+          // before a JWT exists, and organizationService's RLS-backed RPC
+          // needs auth.uid() to run -- there is no authenticated context
+          // yet to create the org against. This is a genuine follow-up
+          // gap, not silently dropped: the organization is NOT created
+          // here, and must be created after the user's first real
+          // sign-in post-confirmation (e.g. an onboarding step that
+          // calls organizationService.createOrganization once
+          // authenticated) -- not yet wired up.
+          logger.warn('authService', 'Organization creation deferred: email confirmation required before an authenticated session exists', {
+            organizationName: params.organizationName
+          });
+        }
       }
 
       // data.session is null when Supabase requires email confirmation
@@ -660,59 +761,120 @@ class AuthService {
     return this.loginAsUserForTest(target.id);
   }
 
-  public switchOrganization(orgId: string | null): AuthSession {
+  public async switchOrganization(orgId: string | null): Promise<AuthSession> {
     if (!this.currentSession.user) {
       throw new UnauthorizedError('Cannot switch organization while unauthenticated.');
     }
+
+    if (this.currentSession.isDemoMode) {
+      if (orgId === null) {
+        this.currentSession.activeOrganization = null;
+      } else {
+        const org = db.getOrganizationById(orgId);
+        if (!org) {
+          throw new NotFoundError('Organization', orgId);
+        }
+        const memberships = db.getMembershipsByUserId(this.currentSession.user.id);
+        const hasAccess = memberships.some((m) => m.organizationId === orgId && m.status === 'active');
+        if (
+          hasAccess ||
+          this.currentSession.user.systemRole === 'platform_admin' ||
+          this.currentSession.user.primaryRole === 'platform_admin'
+        ) {
+          this.currentSession.activeOrganization = org;
+        } else {
+          throw new ForbiddenError('Unauthorized organization workspace access.');
+        }
+      }
+      storageAdapter.setItem(SESSION_STORAGE_KEY, this.currentSession);
+      return this.currentSession;
+    }
+
+    // Real session: resolve against Supabase via organizationService, RLS
+    // enforced (a non-member/non-admin gets null back and is rejected
+    // below -- the same authorization outcome as the demo path above, but
+    // decided by Postgres instead of a client-side membership scan).
     if (orgId === null) {
       this.currentSession.activeOrganization = null;
     } else {
-      const org = db.getOrganizationById(orgId);
+      const { organizationService } = await import('./organizationService');
+      const org = await organizationService.getOrganizationById(orgId);
       if (!org) {
         throw new NotFoundError('Organization', orgId);
       }
-      const memberships = db.getMembershipsByUserId(this.currentSession.user.id);
-      const hasAccess = memberships.some((m) => m.organizationId === orgId && m.status === 'active');
-      if (
-        hasAccess ||
-        this.currentSession.user.systemRole === 'platform_admin' ||
-        this.currentSession.user.primaryRole === 'platform_admin'
-      ) {
-        this.currentSession.activeOrganization = org;
-      } else {
+      const membership = await organizationService.getUserMembership(orgId, this.currentSession.user.id);
+      const isPlatformAdmin =
+        this.currentSession.user.systemRole === 'platform_admin' || this.currentSession.user.primaryRole === 'platform_admin';
+      if (!membership && !isPlatformAdmin) {
         throw new ForbiddenError('Unauthorized organization workspace access.');
       }
+      this.currentSession.activeOrganization = org;
     }
     storageAdapter.setItem(SESSION_STORAGE_KEY, this.currentSession);
+    await this.refreshOrgContext();
     return this.currentSession;
   }
 
   public getUserOrganizations(): Array<Organization & { membership: OrganizationMembership }> {
     if (!this.currentSession.user) return [];
-    return db.getUserOrganizations(this.currentSession.user.id);
+    if (this.currentSession.isDemoMode) {
+      return db.getUserOrganizations(this.currentSession.user.id);
+    }
+    return this.cachedUserOrganizations;
   }
 
   public getActiveMembership(): OrganizationMembership | null {
     if (!this.currentSession.user || !this.currentSession.activeOrganization) return null;
-    return db.getUserMembership(this.currentSession.activeOrganization.id, this.currentSession.user.id);
+    if (this.currentSession.isDemoMode) {
+      return db.getUserMembership(this.currentSession.activeOrganization.id, this.currentSession.user.id);
+    }
+    return this.cachedActiveMembership;
   }
 
   public getAuthorizationContext(targetOrgId?: string): AuthorizationContext {
     const user = this.currentSession.user;
     const orgId = targetOrgId || this.currentSession.activeOrganization?.id;
-    const activeOrg = orgId ? db.getOrganizationById(orgId) : this.currentSession.activeOrganization;
-    const membership = user && activeOrg ? db.getUserMembership(activeOrg.id, user.id) : null;
-    const subscription = activeOrg ? db.getOrganizationSubscription(activeOrg.id) : null;
-    const capabilities = user ? (user.capabilities || []) : [];
-    const platformRole = user ? (user.systemRole || 'user') : 'user';
+
+    if (this.currentSession.isDemoMode) {
+      const activeOrg = orgId ? db.getOrganizationById(orgId) : this.currentSession.activeOrganization;
+      const membership = user && activeOrg ? db.getUserMembership(activeOrg.id, user.id) : null;
+      const subscription = activeOrg ? db.getOrganizationSubscription(activeOrg.id) : null;
+      const capabilities = user ? (user.capabilities || []) : [];
+      const platformRole = user ? (user.systemRole || 'user') : 'user';
+      const userMemberships = user ? db.getMembershipsByUserId(user.id) : [];
+
+      return {
+        user,
+        activeOrganization: activeOrg,
+        membership,
+        subscription,
+        capabilities,
+        platformRole,
+        userMemberships
+      };
+    }
+
+    // Real session: read the synchronous cache kept current by
+    // refreshOrgContext() (see this class's field doc comment above).
+    const activeOrg =
+      targetOrgId && targetOrgId !== this.currentSession.activeOrganization?.id
+        ? this.cachedUserOrganizations.find((o) => o.id === targetOrgId) || null
+        : this.currentSession.activeOrganization;
+    const membership =
+      targetOrgId && targetOrgId !== this.currentSession.activeOrganization?.id
+        ? this.cachedUserOrganizations.find((o) => o.id === targetOrgId)?.membership || null
+        : this.cachedActiveMembership;
+    const capabilities = user ? user.capabilities || [] : [];
+    const platformRole = user ? user.systemRole || 'user' : 'user';
 
     return {
       user,
       activeOrganization: activeOrg,
       membership,
-      subscription,
+      subscription: this.cachedSubscription,
       capabilities,
-      platformRole
+      platformRole,
+      userMemberships: this.cachedUserOrganizations.map((o) => o.membership)
     };
   }
 

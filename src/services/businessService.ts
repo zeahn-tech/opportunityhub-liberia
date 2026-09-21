@@ -40,15 +40,13 @@
  * approval" state instead -- flagged here and in the verification doc,
  * not silently patched over in this service.
  *
- * NOT covered by this service (flagged, not silently dropped): sendInquiry/
- * getInquiries/toggleSave/getSavedIds/incrementViews have no backing
- * Supabase tables (no business_inquiries or saved-listings table exists)
- * -- still dbClient-backed local-only behavior, same category as
- * organizationService's deferred invitations (Service 1).
+ * sendInquiry/getInquiries/toggleSave/getSavedIds now read/write
+ * public.business_inquiries / public.business_saved_listings (see
+ * supabase/migrations/20260912090000_deferred_features_backend.sql) --
+ * previously deferred, no longer.
  */
 
 import { BusinessAccessRequest, BusinessInquiry, BusinessListing } from '../types';
-import { db } from '../db/dbClient';
 import { getSupabaseClient } from '../lib/supabaseClient';
 import { apiClient, ApiResponse } from './apiClient';
 import { authService } from './authService';
@@ -384,35 +382,128 @@ export const businessService = {
   },
 
   // ---------------------------------------------------------------------
-  // NOT migrated -- no backing Supabase table yet, still dbClient-backed.
-  // See this file's header comment.
+  // ---------------------------------------------------------------------
+  // Saves / inquiries / view increments -- previously deferred (no
+  // backing tables existed), now closed via
+  // supabase/migrations/20260912090000_deferred_features_backend.sql.
   // ---------------------------------------------------------------------
   async toggleSave(businessId: string, userId: string): Promise<ApiResponse<boolean>> {
-    return apiClient.execute(() => db.toggleSaveBusiness(businessId, userId));
+    return apiClient.execute(async () => {
+      const { data: existing } = await client()
+        .from('business_saved_listings')
+        .select('listing_id')
+        .eq('user_id', userId)
+        .eq('listing_id', businessId)
+        .maybeSingle();
+
+      if (existing) {
+        const { error } = await client()
+          .from('business_saved_listings')
+          .delete()
+          .eq('user_id', userId)
+          .eq('listing_id', businessId);
+        if (error) translateError(error);
+        return false;
+      }
+
+      const { error } = await client().from('business_saved_listings').insert({ user_id: userId, listing_id: businessId });
+      if (error) translateError(error);
+      return true;
+    });
   },
 
   async getSavedIds(userId: string): Promise<ApiResponse<string[]>> {
-    return apiClient.execute(() => db.getSavedBusinessIds(userId));
+    return apiClient.execute(async () => {
+      const { data, error } = await client().from('business_saved_listings').select('listing_id').eq('user_id', userId);
+      if (error) throw new Error(error.message);
+      return ((data as { listing_id: string }[]) || []).map((r) => r.listing_id);
+    });
   },
 
   async incrementViews(id: string): Promise<ApiResponse<void>> {
-    return apiClient.execute(() => db.incrementBusinessViews(id));
+    return apiClient.execute(async () => {
+      const { data } = await client().from('business_listings').select('views_count').eq('id', id).maybeSingle();
+      const current = (data as { views_count: number | null } | null)?.views_count ?? 0;
+      // Best-effort: a non-owner viewer typically has no UPDATE grant on
+      // business_listings under RLS, so this legitimately no-ops for most
+      // viewers rather than erroring -- same "let Postgres decide, don't
+      // pre-check" pattern as opportunityService's view-count increment.
+      try {
+        await client().from('business_listings').update({ views_count: current + 1 }).eq('id', id);
+      } catch {
+        // Non-critical.
+      }
+    });
   },
 
   async sendInquiry(
     businessId: string,
     inquiryData: { senderName: string; senderEmail: string; senderPhone?: string; message: string; inquiryType: 'general' | 'financials' | 'site_visit' | 'offer' }
   ): Promise<ApiResponse<BusinessInquiry>> {
-    return apiClient.execute(() => {
-      const session = authService.getSession();
-      return db.createBusinessInquiry({ businessId, senderUserId: session.user.id, ...inquiryData }, session.user.id);
+    return apiClient.execute(async () => {
+      const {
+        data: { user }
+      } = await client().auth.getUser();
+      if (!user) throw new UnauthorizedError('Sign in required to send an inquiry.');
+      if (!inquiryData.message?.trim()) throw new ValidationError('An inquiry message is required.');
+
+      const id = `inq-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+      const { data, error } = await client()
+        .from('business_inquiries')
+        .insert({
+          id,
+          listing_id: businessId,
+          sender_user_id: user.id,
+          sender_name: inquiryData.senderName,
+          sender_email: inquiryData.senderEmail,
+          sender_phone: inquiryData.senderPhone ?? null,
+          message: inquiryData.message,
+          inquiry_type: inquiryData.inquiryType,
+          status: 'unread'
+        })
+        .select('*')
+        .maybeSingle();
+      if (error) translateError(error);
+      return rowToInquiry(data as BusinessInquiryRow);
     });
   },
 
   async getInquiries(businessId: string): Promise<ApiResponse<BusinessInquiry[]>> {
-    return apiClient.execute(() => db.getBusinessInquiries(businessId));
+    return apiClient.execute(async () => {
+      const { data, error } = await client().from('business_inquiries').select('*').eq('listing_id', businessId);
+      if (error) throw new Error(error.message);
+      return ((data as BusinessInquiryRow[]) || []).map(rowToInquiry);
+    });
   }
 };
+
+interface BusinessInquiryRow {
+  id: string;
+  listing_id: string;
+  sender_user_id: string;
+  sender_name: string;
+  sender_email: string;
+  sender_phone: string | null;
+  message: string;
+  inquiry_type: string;
+  status: string;
+  created_at: string;
+}
+
+function rowToInquiry(row: BusinessInquiryRow): BusinessInquiry {
+  return {
+    id: row.id,
+    businessId: row.listing_id,
+    senderUserId: row.sender_user_id,
+    senderName: row.sender_name,
+    senderEmail: row.sender_email,
+    senderPhone: row.sender_phone ?? undefined,
+    message: row.message,
+    inquiryType: row.inquiry_type as BusinessInquiry['inquiryType'],
+    status: row.status as BusinessInquiry['status'],
+    createdAt: row.created_at
+  };
+}
 
 interface BusinessAccessRequestRow {
   id: string;

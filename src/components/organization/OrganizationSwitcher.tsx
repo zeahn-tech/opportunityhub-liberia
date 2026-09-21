@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
-import { db } from '../../db/dbClient';
+import { organizationService } from '../../services/organizationService';
 import { Organization, OrganizationInvitation } from '../../types';
 
 interface OrganizationSwitcherProps {
@@ -50,33 +50,32 @@ export const OrganizationSwitcher: React.FC<OrganizationSwitcherProps> = ({
   // Load pending invitations for the authenticated user's email
   useEffect(() => {
     if (user?.email) {
-      try {
-        const invs = db.getPendingInvitationsForEmail(user.email);
-        const enriched = invs.map((inv) => {
-          const org = db.getOrganizationById(inv.organizationId);
-          return {
-            ...inv,
-            organizationName: org?.name || 'Authorized Organization'
-          };
-        });
-        setPendingInvitations(enriched);
-      } catch {
-        setPendingInvitations([]);
-      }
+      organizationService
+        .getMyPendingInvitations()
+        .then(setPendingInvitations)
+        .catch(() => setPendingInvitations([]));
     }
   }, [user?.email, isOpen]);
 
-  const allOrganizations = useMemo(() => {
-    if (!isPlatformAdmin) return [];
-    return db.getOrganizations();
+  const [allOrganizations, setAllOrganizations] = useState<Organization[]>([]);
+  useEffect(() => {
+    if (!isPlatformAdmin) {
+      setAllOrganizations([]);
+      return;
+    }
+    organizationService
+      .getOrganizations()
+      .then(setAllOrganizations)
+      .catch(() => setAllOrganizations([]));
   }, [isPlatformAdmin, isOpen]);
 
-  const handleSelectOrg = (orgId: string | null) => {
+  const handleSelectOrg = async (orgId: string | null) => {
     try {
-      switchOrganization(orgId);
+      await switchOrganization(orgId);
       setIsOpen(false);
       if (orgId) {
-        const targetOrg = db.getOrganizationById(orgId);
+        const targetOrg =
+          userOrganizations.find((o) => o.id === orgId) || allOrganizations.find((o) => o.id === orgId);
         showToast(`Switched workspace to ${targetOrg?.name || 'organization'}.`, 'info');
       } else {
         showToast('Switched to Personal Profile context.', 'info');
@@ -86,12 +85,12 @@ export const OrganizationSwitcher: React.FC<OrganizationSwitcherProps> = ({
     }
   };
 
-  const handleAcceptInvite = (token: string, orgName: string) => {
+  const handleAcceptInvite = async (token: string, orgName: string) => {
     if (!user) return;
     try {
-      const mem = db.acceptInvitation(token, user.id);
+      const mem = await organizationService.acceptInvitation(token);
       refreshOrganizations();
-      switchOrganization(mem.organizationId);
+      await switchOrganization(mem.organizationId);
       setIsOpen(false);
       showToast(`Joined ${orgName} as ${mem.orgRole}!`, 'success');
     } catch (err: unknown) {
@@ -99,17 +98,12 @@ export const OrganizationSwitcher: React.FC<OrganizationSwitcherProps> = ({
     }
   };
 
-  const handleDeclineInvite = (token: string) => {
+  const handleDeclineInvite = async (invitationId: string) => {
     try {
-      db.revokeInvitation(token);
+      await organizationService.declineInvitation(invitationId);
       if (user?.email) {
-        const invs = db.getPendingInvitationsForEmail(user.email);
-        setPendingInvitations(
-          invs.map((inv) => ({
-            ...inv,
-            organizationName: db.getOrganizationById(inv.organizationId)?.name || 'Organization'
-          }))
-        );
+        const invs = await organizationService.getMyPendingInvitations();
+        setPendingInvitations(invs);
       }
       showToast('Invitation declined.', 'info');
     } catch (err: unknown) {
@@ -188,7 +182,7 @@ export const OrganizationSwitcher: React.FC<OrganizationSwitcherProps> = ({
                   </div>
                   <div className="flex items-center justify-end gap-2 pt-1">
                     <button
-                      onClick={() => handleDeclineInvite(inv.token)}
+                      onClick={() => handleDeclineInvite(inv.id)}
                       className="px-2 py-1 text-[11px] font-semibold text-stone-500 hover:text-stone-700 cursor-pointer"
                     >
                       Decline

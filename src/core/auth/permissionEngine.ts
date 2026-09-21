@@ -26,6 +26,19 @@ export interface AuthorizationContext {
   subscription?: OrganizationSubscription | null;
   capabilities: UserCapability[];
   platformRole: SystemRole;
+  /**
+   * ALL of the caller's org memberships, not just the active org's --
+   * needed because permission checks below often evaluate a resource
+   * belonging to a DIFFERENT org than the currently active one (e.g.
+   * checking whether the caller can manage an opportunity belonging to
+   * some other org they're also a member of). Populated by
+   * authService.getAuthorizationContext(): from dbClient for demo
+   * sessions (unchanged), and from the real Supabase-backed
+   * organizationService cache for real sessions -- see authService.ts's
+   * refreshOrgContext() doc comment for why that's a synchronous cache
+   * and not a live async call.
+   */
+  userMemberships: OrganizationMembership[];
 }
 
 export interface WorkspaceAccessResult {
@@ -56,12 +69,11 @@ export function isModerationOfficer(context: AuthorizationContext): boolean {
 }
 
 export function getUserMembershipForOrg(
-  userId: string,
+  context: AuthorizationContext,
   organizationId: string
 ): OrganizationMembership | null {
-  const memberships = db.getMembershipsByUserId(userId);
   return (
-    memberships.find(
+    context.userMemberships.find(
       (m) => m.organizationId === organizationId && m.status === 'active'
     ) || null
   );
@@ -95,7 +107,7 @@ export function canViewOpportunity(
     return true;
   }
 
-  const membership = getUserMembershipForOrg(context.user.id, opportunity.organizationId);
+  const membership = getUserMembershipForOrg(context, opportunity.organizationId);
   if (!membership) return false;
 
   const role = membership.orgRole;
@@ -131,7 +143,7 @@ export function canApply(
 
   // Resource ownership check: Candidate cannot apply if they own/posted this vacancy as org owner/recruiter
   if (opportunity.organizationId) {
-    const membership = getUserMembershipForOrg(context.user.id, opportunity.organizationId);
+    const membership = getUserMembershipForOrg(context, opportunity.organizationId);
     if (membership && (membership.orgRole === 'owner' || membership.orgRole === 'recruiter')) {
       // Organization owners/recruiters cannot apply to their own organization's posted vacancies
       return false;
@@ -178,7 +190,7 @@ export function canCreateOpportunity(
     return false;
   }
 
-  const membership = getUserMembershipForOrg(context.user.id, targetOrgId);
+  const membership = getUserMembershipForOrg(context, targetOrgId);
   if (!membership) {
     return false;
   }
@@ -193,8 +205,13 @@ export function canCreateOpportunity(
     return false;
   }
 
-  // Subscription Entitlement Check:
-  // Enforce maxActiveJobs entitlement if subscription plan limits active postings
+  // Subscription Entitlement Check (UX pre-check ONLY -- the real
+  // enforcement is a fresh Supabase count query inside
+  // opportunityService.create()/publish(), see Service 2's migration.
+  // This client-side check can be stale for a real org whose live
+  // opportunity count lives in Supabase, not dbClient -- that's
+  // acceptable here since it only gates whether a "create" button
+  // renders, never whether the create actually succeeds).
   const sub = context.subscription || db.getOrganizationSubscription(targetOrgId);
   if (sub) {
     const plan = getPlanById(sub.planId);
@@ -231,7 +248,7 @@ export function canManageOpportunity(
     return true;
   }
 
-  const membership = getUserMembershipForOrg(context.user.id, opportunity.organizationId);
+  const membership = getUserMembershipForOrg(context, opportunity.organizationId);
   if (!membership) {
     return false;
   }
@@ -266,7 +283,7 @@ export function canManageOrganization(
     return true;
   }
 
-  const membership = getUserMembershipForOrg(context.user.id, organizationId);
+  const membership = getUserMembershipForOrg(context, organizationId);
   if (!membership) {
     return false;
   }
@@ -301,7 +318,7 @@ export function canInviteMember(
     return true;
   }
 
-  const membership = getUserMembershipForOrg(context.user.id, organizationId);
+  const membership = getUserMembershipForOrg(context, organizationId);
   if (!membership) {
     return false;
   }
@@ -352,7 +369,7 @@ export function canViewCandidate(
 
   // 3. Organization tenant authorization
   if (candidateOrApp.organizationId) {
-    const membership = getUserMembershipForOrg(context.user.id, candidateOrApp.organizationId);
+    const membership = getUserMembershipForOrg(context, candidateOrApp.organizationId);
     if (!membership) {
       return false;
     }
@@ -389,7 +406,7 @@ export function canManageSubscription(
     return true;
   }
 
-  const membership = getUserMembershipForOrg(context.user.id, organizationId);
+  const membership = getUserMembershipForOrg(context, organizationId);
   if (!membership) {
     return false;
   }
@@ -451,7 +468,7 @@ export function canModifyResource(
 
   // Organization resource ownership
   if (resource.organizationId) {
-    const membership = getUserMembershipForOrg(context.user.id, resource.organizationId);
+    const membership = getUserMembershipForOrg(context, resource.organizationId);
     if (membership) {
       return (
         membership.orgRole === 'owner' ||
@@ -503,8 +520,7 @@ export function canAccessWorkspace(
         return { allowed: true };
       }
       // Check if user belongs to an organization with recruiter, owner, admin, or hiring manager role
-      const memberships = db.getMembershipsByUserId(context.user.id);
-      const activeMemberships = memberships.filter((m) => m.status === 'active');
+      const activeMemberships = context.userMemberships.filter((m) => m.status === 'active');
 
       if (activeMemberships.length === 0) {
         return {

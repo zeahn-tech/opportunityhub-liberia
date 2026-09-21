@@ -43,7 +43,7 @@ interface AuthContextType {
   completeOnboarding: (capabilities: UserCapability[]) => Promise<void>;
   changePassword: (currentPass: string, newPass: string) => Promise<void>;
   switchRole: (role: UserRole) => void;
-  switchOrganization: (orgId: string | null) => void;
+  switchOrganization: (orgId: string | null) => Promise<void>;
   userOrganizations: Array<Organization & { membership: OrganizationMembership }>;
   activeMembership: OrganizationMembership | null;
   refreshOrganizations: () => void;
@@ -164,8 +164,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setSession({ ...updated });
   }, []);
 
-  const switchOrganization = useCallback((orgId: string | null) => {
-    const updated = authService.switchOrganization(orgId);
+  const switchOrganization = useCallback(async (orgId: string | null) => {
+    const updated = await authService.switchOrganization(orgId);
     setSession({ ...updated });
   }, []);
 

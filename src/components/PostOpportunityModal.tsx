@@ -1,16 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { County, EmploymentType, Opportunity, OpportunityType, Organization, WorkplaceModel } from '../types';
 import { X, Plus, Trash2, CheckCircle2, Clock, MapPin, DollarSign, Building2, Calendar, FileText } from 'lucide-react';
-import { INITIAL_ORGANIZATIONS, LIBERIAN_COUNTIES } from '../data/seedData';
+import { LIBERIAN_COUNTIES } from '../data/seedData';
 import { OPPORTUNITY_TYPES } from '../config/constants';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { db } from '../db/dbClient';
+import { organizationService } from '../services/organizationService';
 
 interface PostOpportunityModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (data: Omit<Opportunity, 'id' | 'viewsCount' | 'applicationsCount' | 'postedDate'>, isDraft: boolean, editId?: string) => Promise<void>;
+  onSave: (data: Omit<Opportunity, 'id' | 'viewsCount' | 'applicationsCount' | 'postedDate' | 'organization'>, isDraft: boolean, editId?: string) => Promise<void>;
   opportunityToEdit?: Opportunity | null;
   currency: 'USD' | 'LRD';
 }
@@ -28,7 +28,19 @@ export const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({
   const { showToast } = useToast();
 
   const isPlatformAdmin = activeRole === 'platform_admin' || session?.user?.systemRole === 'platform_admin' || user?.systemRole === 'platform_admin';
-  const defaultOrgId = activeOrganization?.id || (userOrganizations.length > 0 ? userOrganizations[0].id : (INITIAL_ORGANIZATIONS[0]?.id || ''));
+  const [allOrganizations, setAllOrganizations] = useState<Organization[]>([]);
+
+  useEffect(() => {
+    if (!isPlatformAdmin) {
+      setAllOrganizations([]);
+      return;
+    }
+    organizationService
+      .getOrganizations()
+      .then(setAllOrganizations)
+      .catch(() => setAllOrganizations([]));
+  }, [isPlatformAdmin]);
+  const defaultOrgId = activeOrganization?.id || (userOrganizations.length > 0 ? userOrganizations[0].id : '');
 
   const [title, setTitle] = useState('');
   const [selectedOrgId, setSelectedOrgId] = useState(defaultOrgId);
@@ -93,7 +105,7 @@ export const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({
       if (opportunityToEdit.skills) setSkills(opportunityToEdit.skills);
       if (opportunityToEdit.screeningQuestions) setScreeningQuestions(opportunityToEdit.screeningQuestions);
     } else {
-      setSelectedOrgId(activeOrganization?.id || (userOrganizations.length > 0 ? userOrganizations[0].id : (INITIAL_ORGANIZATIONS[0]?.id || '')));
+      setSelectedOrgId(activeOrganization?.id || (userOrganizations.length > 0 ? userOrganizations[0].id : ''));
     }
   }, [opportunityToEdit, session, activeOrganization, userOrganizations]);
 
@@ -135,23 +147,9 @@ export const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({
 
     try {
       setIsSubmitting(true);
-      const org: Organization = db.getOrganizationById(selectedOrgId) || INITIAL_ORGANIZATIONS.find((o) => o.id === selectedOrgId) || {
-        id: selectedOrgId,
-        slug: selectedOrgId,
-        name: activeOrganization?.name || 'Authorized Entity',
-        logoText: 'AE',
-        description: 'Authorized registered enterprise.',
-        type: 'private_company',
-        industry: 'Commercial Operations',
-        county,
-        cityDistrict: locationDetails || `${county} County`,
-        verificationStatus: 'verified',
-        isVerified: true
-      };
 
-      const payload: Omit<Opportunity, 'id' | 'viewsCount' | 'applicationsCount' | 'postedDate'> = {
-        organizationId: org.id,
-        organization: org,
+      const payload: Omit<Opportunity, 'id' | 'viewsCount' | 'applicationsCount' | 'postedDate' | 'organization'> = {
+        organizationId: selectedOrgId,
         title: title.trim(),
         slug: title.toLowerCase()?.replace(/[^a-z0-9]+/g, '-'),
         type,
@@ -222,7 +220,7 @@ export const PostOpportunityModal: React.FC<PostOpportunityModalProps> = ({
                 onChange={(e) => setSelectedOrgId(e.target.value)}
                 className="w-full p-3 bg-[#F9F8F4] rounded-xl border border-[#E8E4D9] outline-none text-[#283618] font-medium"
               >
-                {db.getOrganizations().map((o) => (
+                {allOrganizations.map((o) => (
                   <option key={o.id} value={o.id}>
                     {o.name} ({o.type?.replace('_', ' ')}) {o.isVerified ? '✓ Verified' : ''}
                   </option>
