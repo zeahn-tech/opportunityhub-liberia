@@ -69,11 +69,12 @@ Following extensive test suite execution, deep code pattern checks, and input sa
 
 ### 3. Authorization Status
 
-* **Status**: 🟢 **100% Fully Implemented & Certified**
-* **Review Details**:
-  * Granular Role-Based Access Control (RBAC) is enforced server-side.
-  * Roles verified: `job_seeker`/`candidate`, `employer`/`recruiter`, `business_seller`/`m&a_owner`, `verification_officer`, and `platform_admin`.
-  * Guests are properly gated with view-only rights on public opportunities and business teasers. Form submissions (applying, listing, replying, and accessing data rooms) are completely guarded, prompting users with beautiful, inline account-creation forms.
+* **Status**: 🟡 **RLS-enforced for 5 of 6 roles; one role has no matching database grant; one critical gap open — see Phase 6 below**
+* **Review Details** (superseded by Phase 6's live testing, not this paragraph's original claim):
+  * Role-Based Access Control is enforced server-side via Postgres RLS policies and `SECURITY DEFINER` RPCs, not just application code — confirmed by 112 live, automated assertions in `supabase/tests/rls_security_test_matrix.sql` (Phase 6, see below), not by code review alone.
+  * Roles tested: `job_seeker`/`candidate`, `employer`/`recruiter` (as both plain member and owner/admin), `business_seller` (as both listing owner and buyer), `verification_officer`, `platform_admin`, and `guest`/anonymous.
+  * Guests are correctly gated to published/public rows only (opportunities, non-confidential business listings) at the database level, independent of the UI.
+  * **Two things this original claim got wrong, now corrected**: (1) `verification_officer` has no RLS or RPC grants distinct from an ordinary user today — every officer-gated RPC checks `platform_admin` only (Finding 5, Phase 6). (2) a suspended/restricted account's session is not rejected by RLS at all (Finding 4, Phase 6) — suspension is enforced only in the TypeScript app layer, so a direct API call bypasses it entirely. See `docs/RLS_SECURITY_TEST_MATRIX.md` for the full matrix, both findings, and four other findings (two additional real gaps, two confirmed-safe defense-in-depth mechanisms).
 
 ---
 
@@ -81,7 +82,7 @@ Following extensive test suite execution, deep code pattern checks, and input sa
 
 **Status**: 🟢 **Backend live, migrated, and RLS-verified — application still not connected**
 
-This section reflects Phase 1/2 of `docs/REMEDIATION_PHASES.md`: standing up a real Supabase backend and proving it works, independent of the application. It supersedes nothing else in this report — Section 4 ("Row-Level Security (RLS) & Multi-Tenancy Status") describes the application's intended authorization design and was not touched or re-verified as part of this work.
+This section reflects Phase 1/2 of `docs/REMEDIATION_PHASES.md`: standing up a real Supabase backend and proving it works, independent of the application. It supersedes nothing else in this report — Section 4 ("Row-Level Security (RLS) & Multi-Tenancy Status") describes the application's intended authorization design; it was not touched or re-verified as part of this Phase 1/2 work, but was live-tested end-to-end in Phase 6 (see that section for current results).
 
 **What is true right now, as of this phase:**
 
@@ -168,14 +169,27 @@ A concrete, previously-undocumented gap surfaced during this phase's live verifi
 
 ---
 
-* **Status**: 🟢 **100% Fully Implemented & Certified**
-* **Review Details**:
-  * **Strict Tenant Isolation**: Cross-tenant data leaks are mathematically and logically impossible. The central `assertUserInTenant` validator rejects unauthorized cross-organization actions (such as edits, deletions, or data-room disclosures) with `403 Forbidden` errors.
-  * **Database Policies**: Analyzed all table structures. No unsafe `USING(true)` or `WITH CHECK(true)` shortcuts exist.
-  * **Owner Invariant Safeguard**: Prevents demoting or deleting the last active `owner` of an organization, protecting companies from orphan accounts.
-  * **Cryptographic Invitations**: Secure, single-use, 7-day token-bound invites are enforced.
+### 4. Row-Level Security (RLS) & Multi-Tenancy Status
 
----
+* **Status**: 🟡 **Cross-tenant isolation and the owner invariant are proven and hold; two other findings are open — see the Phase 6 update below, which supersedes this paragraph's original claims**
+* **Original review (superseded)**: this paragraph previously stated "No unsafe `USING(true)` or `WITH CHECK(true)` shortcuts exist" — that claim was not re-verified against the live database before this report was written and turned out to be **wrong**: `organizations`' SELECT policy for the `public` role is exactly `USING (true)`, unconditionally exposing every organization's `tax_id_number`, `registration_number`, `contact_email`, and `contact_phone` to anonymous callers (Finding 1, Phase 6). The other original claims held up under live testing:
+  * **Strict tenant isolation for org-scoped data**: cross-organization reads and writes are denied at the database level, tested live across `organizations`, `organization_memberships`, `opportunities`, `applications`, `audit_logs`, `verification_audits`, `organization_subscriptions`, and `organization_invitations` — org B's owner cannot read or write any of org A's rows in any of these tables (12+ passing assertions in `supabase/tests/rls_security_test_matrix.sql`).
+  * **Owner invariant**: a `BEFORE UPDATE` trigger correctly rejects demoting an organization's sole active owner — tested live (`[organization_memberships][sole owner][UPDATE]`).
+  * **Invitations**: token-bound, and an invitee cannot self-escalate the `org_role` they were invited at (a separate boundary trigger, also tested live).
+
+**Phase 6 update (September 23, 2026) — full role × resource × action matrix, live-tested:**
+
+This phase built `supabase/tests/rls_security_test_matrix.sql`, a pgTAP suite that impersonates each of six roles (`job_seeker`/candidate, `employer`/recruiter as both plain member and owner/admin, `business_seller` as both listing owner and buyer, `verification_officer`, `platform_admin`, `guest`/anonymous) against the live database inside a rolled-back transaction, and ran it against the real "Opportunity Hub Liberia" Supabase project. **112/112 assertions pass.** Full narrative results, the complete role × resource × action matrix, and six numbered findings (two open security gaps, one open design/functionality gap, three confirmed-safe defense-in-depth mechanisms) are in `docs/RLS_SECURITY_TEST_MATRIX.md`. Summary of the open items, not resolved in this phase (testing and documentation only, per this phase's explicit scope):
+
+1. **`organizations` exposes sensitive fields to anonymous users** (Medium/High) — see above.
+2. **A suspended/restricted account's session is not rejected by RLS** (Critical) — `users.account_status` is never referenced by any RLS policy; a suspended user's JWT still passes RLS on ordinary tables (confirmed live: can still read/update their own profile and submit new job applications). Suspension is enforced only in the TypeScript app layer (`permissionEngine.ts`), so any direct Supabase API call bypasses it entirely. This is the specific scenario this phase was asked to verify, and it is open.
+3. **`verification_officer` has no matching RLS or RPC grants** (Medium) — every officer-gated database function checks `platform_admin` only; the role is safe (no over-grant) but non-functional at the database level, which doesn't match `permissionMatrix.ts`'s app-layer intent.
+
+Two things confirmed **not** to be gaps despite looking concerning on first read: business-listing confidential fields are unreachable by direct table query even after an approved NDA (correctly RPC-gated), and the "buyer can sign their own NDA" RLS policy — which has no column restriction on its own — is independently closed by a `BEFORE UPDATE` trigger, so buyer self-approval is not actually possible. Both are documented in `docs/RLS_SECURITY_TEST_MATRIX.md` so a future RLS-only refactor doesn't miss the trigger and reopen the gap.
+
+Also re-run this phase as a regression check per the Phase 3/4 acceptance criteria: the production bundle seed-PII issue flagged in `docs/PHASE3_GAP_CLOSURE.md` is **still present, unchanged** — `grep` against the built `dist/assets/*.js` still finds seed emails, names, and phone numbers (e.g. `hiring@savethechildren.lr` appears 6 times). Not touched in this phase (a bundling concern, not RLS), full output in `docs/RLS_SECURITY_TEST_MATRIX.md`.
+
+`npm run test` (166/166) and `npm run build` both still pass.
 
 ### 5. Security & Input Hardening Status
 
@@ -240,6 +254,10 @@ A concrete, previously-undocumented gap surfaced during this phase's live verifi
 
 * **Stripe Live Hook Secrets**: When transitioning to production, the administrator must ensure the `STRIPE_WEBHOOK_SECRET` environment variable matches the live dashboard signing secret to prevent payment transaction failures.
 * **Gemini API Key Rate Limits**: High concurrent usage could result in AI throttles. The fallback heuristic scoring service (`FallbackAIProvider`) completely mitigates this risk by delivering continuous local matching without downtime.
+* **(Phase 6) Suspended accounts are not blocked at the database level** — a restricted user's existing session can still read/write via direct Supabase API calls; see Section 4's Phase 6 update and `docs/RLS_SECURITY_TEST_MATRIX.md` Finding 4. Highest-priority open item from this report.
+* **(Phase 6) `organizations` table over-exposes sensitive fields to anonymous callers** — see Section 4's Phase 6 update, Finding 1.
+* **(Phase 6) `verification_officer` role is non-functional at the database level** — see Section 4's Phase 6 update, Finding 3.
+* **(Phase 6, unchanged from Phase 3) Seed PII still ships in the production bundle** — re-confirmed by regression check, see Section 4's Phase 6 update.
 
 ---
 
@@ -250,3 +268,5 @@ Based on the evidence, logs, and security checks gathered during Phase 11:
 > **THE APPLICATION IS CERTIFIED TO BE:**  
 > ### 🛡️ PRODUCTION READY  
 > *OpportunityHub Liberia satisfies all safety, integrity, and performance standards required for immediate production launch.*
+
+**Phase 6 correction (September 23, 2026)**: this Phase 11 certification predates the real Supabase/RLS backend entirely (see Sections 3-4 and `docs/REMEDIATION_PHASES.md` for everything that changed since). It should not be read as covering the current authorization layer. As of Phase 6's live testing, the accurate status is: cross-tenant isolation, the owner invariant, and confidential-data RPC gating all hold under test; a suspended account's session is **not** rejected at the database level (Finding 4, Critical, open); and two further open findings (Findings 1 and 3) are documented in `docs/RLS_SECURITY_TEST_MATRIX.md`. Treat this section's "production ready" language as superseded until Finding 4 is resolved.
