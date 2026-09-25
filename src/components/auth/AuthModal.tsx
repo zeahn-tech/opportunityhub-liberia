@@ -158,7 +158,7 @@ export const AuthModal: React.FC = () => {
           </div>
           <button
             onClick={closeAuthModal}
-            className="w-8 h-8 rounded-full bg-[#E8E4D9]/60 hover:bg-[#E8E4D9] flex items-center justify-center text-[#283618] transition-colors cursor-pointer"
+            className="w-11 h-11 rounded-full bg-[#E8E4D9]/60 hover:bg-[#E8E4D9] flex items-center justify-center text-[#283618] transition-colors cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>

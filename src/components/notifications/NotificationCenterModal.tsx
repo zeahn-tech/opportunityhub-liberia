@@ -135,7 +135,7 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
             )}
             <button
               onClick={onClose}
-              className="p-1.5 text-stone-400 hover:text-stone-600 rounded-xl hover:bg-stone-100 cursor-pointer"
+              className="p-1.5 min-w-11 min-h-11 flex items-center justify-center text-stone-400 hover:text-stone-600 rounded-xl hover:bg-stone-100 cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>

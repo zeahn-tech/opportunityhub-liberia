@@ -139,7 +139,7 @@ export const OrganizationTeamModal: React.FC<OrganizationTeamModalProps> = ({
         <div className="p-6 border-b border-[#E8E4D9] bg-[#F9F8F6] relative flex-none">
           <button
             onClick={onClose}
-            className="absolute top-6 right-6 w-8 h-8 rounded-full bg-white border border-[#E8E4D9] flex items-center justify-center text-[#606C38] hover:text-[#132A13] hover:bg-[#F2F2EC] transition-colors cursor-pointer"
+            className="absolute top-6 right-6 w-11 h-11 rounded-full bg-white border border-[#E8E4D9] flex items-center justify-center text-[#606C38] hover:text-[#132A13] hover:bg-[#F2F2EC] transition-colors cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>

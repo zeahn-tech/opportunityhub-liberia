@@ -487,7 +487,8 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
 
               <button
                 onClick={() => setActiveAppDetails(null)}
-                className="w-8 h-8 rounded-full bg-white/80 hover:bg-white flex items-center justify-center text-[#283618] cursor-pointer"
+                aria-label="Close"
+                className="w-11 h-11 rounded-full bg-white/80 hover:bg-white flex items-center justify-center text-[#283618] cursor-pointer shrink-0"
               >
                 ✕
               </button>

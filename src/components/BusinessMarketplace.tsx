@@ -32,6 +32,16 @@ import { BusinessModerationPanel } from './business/BusinessModerationPanel';
 import { BusinessAnalyticsDashboard } from './analytics/BusinessAnalyticsDashboard';
 import { useConfig } from '../context/ConfigContext';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
+
+/** Best-effort human-readable message from a thrown value -- AppError
+ *  subclasses (ForbiddenError/ValidationError/etc.) carry a real .message
+ *  (e.g. "You do not have permission..."), so surface that instead of a
+ *  generic string whenever we have it. */
+function errorMessage(err: unknown, fallback: string): string {
+  if (err instanceof Error && err.message) return err.message;
+  return fallback;
+}
 
 interface BusinessMarketplaceProps {
   businesses: BusinessListing[];
@@ -66,6 +76,7 @@ export const BusinessMarketplace: React.FC<BusinessMarketplaceProps> = ({
   onRefresh
 }) => {
   const { user, can } = useAuth();
+  const { showToast } = useToast();
   const currentUserId = propCurrentUserId || user?.id || '';
   const canModerate = can('business.moderate') || user?.systemRole === 'moderation_officer' || user?.systemRole === 'moderator' || user?.systemRole === 'platform_admin' || user?.primaryRole === 'platform_admin';
   const { isLowBandwidthMode } = useConfig();
@@ -130,6 +141,7 @@ export const BusinessMarketplace: React.FC<BusinessMarketplaceProps> = ({
       if (res.data) setSavedIds(res.data);
     } catch (err) {
       console.error('Failed to load saved listings', err);
+      showToast(errorMessage(err, 'Could not load your saved listings.'), 'error');
     }
   };
 
@@ -140,6 +152,7 @@ export const BusinessMarketplace: React.FC<BusinessMarketplaceProps> = ({
       if (onRefresh) onRefresh();
     } catch (err) {
       console.error('Failed to reload businesses', err);
+      showToast(errorMessage(err, 'Could not refresh listings.'), 'error');
     }
   };
 
@@ -205,6 +218,7 @@ export const BusinessMarketplace: React.FC<BusinessMarketplaceProps> = ({
       }
     } catch (err) {
       console.error('Failed to toggle save business', err);
+      showToast(errorMessage(err, 'Could not update saved listings.'), 'error');
     }
   };
 
@@ -214,6 +228,7 @@ export const BusinessMarketplace: React.FC<BusinessMarketplaceProps> = ({
       await reloadListings();
     } catch (err) {
       console.error('Failed to create business listing', err);
+      showToast(errorMessage(err, 'Could not create the listing.'), 'error');
     }
   };
 
@@ -238,6 +253,7 @@ export const BusinessMarketplace: React.FC<BusinessMarketplaceProps> = ({
       setNdaChecked(false);
     } catch (err) {
       console.error('NDA request error', err);
+      showToast(errorMessage(err, 'Could not submit your NDA request. You may not have permission to access this listing.'), 'error');
       setIsRequestingNda(false);
     }
   };
@@ -255,6 +271,7 @@ export const BusinessMarketplace: React.FC<BusinessMarketplaceProps> = ({
       await reloadListings();
     } catch (err) {
       console.error('Send inquiry error', err);
+      showToast(errorMessage(err, 'Could not send your inquiry.'), 'error');
     }
   };
 
@@ -264,6 +281,7 @@ export const BusinessMarketplace: React.FC<BusinessMarketplaceProps> = ({
       await reloadListings();
     } catch (err) {
       console.error('Moderation error', err);
+      showToast(errorMessage(err, 'Could not apply moderation decision.'), 'error');
     }
   };
 
@@ -273,6 +291,7 @@ export const BusinessMarketplace: React.FC<BusinessMarketplaceProps> = ({
       await reloadListings();
     } catch (err) {
       console.error('Delete error', err);
+      showToast(errorMessage(err, 'Could not delete the listing. You may not have permission to remove it.'), 'error');
     }
   };
 
@@ -699,7 +718,8 @@ export const BusinessMarketplace: React.FC<BusinessMarketplaceProps> = ({
               </div>
               <button
                 onClick={() => setNdaModalListing(null)}
-                className="text-[#606C38] hover:text-[#132A13] text-sm font-bold"
+                aria-label="Close"
+                className="text-[#606C38] hover:text-[#132A13] text-sm font-bold w-11 h-11 rounded-full bg-[#F9F8F4] flex items-center justify-center shrink-0 cursor-pointer"
               >
                 ✕
               </button>

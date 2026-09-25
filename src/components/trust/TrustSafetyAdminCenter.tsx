@@ -1633,7 +1633,7 @@ export const TrustSafetyAdminCenter: React.FC<{ currentUserId?: string }> = () =
               </div>
               <button
                 onClick={() => setSelectedDocForReview(null)}
-                className="w-8 h-8 rounded-full bg-stone-100 hover:bg-stone-200 flex items-center justify-center text-stone-600 transition-colors cursor-pointer"
+                className="w-11 h-11 rounded-full bg-stone-100 hover:bg-stone-200 flex items-center justify-center text-stone-600 transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>

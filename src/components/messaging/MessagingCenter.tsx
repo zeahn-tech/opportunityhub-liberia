@@ -596,7 +596,7 @@ export const MessagingCenter: React.FC<MessagingCenterProps> = ({ initialConvers
           <div className="bg-white rounded-[32px] border border-[#E8E4D9] max-w-lg w-full p-6 space-y-4">
             <div className="flex justify-between items-center">
               <h3 className="text-lg font-bold text-[#283618] font-display">New Platform Inquiry</h3>
-              <button onClick={() => setShowNewMsgModal(false)} className="text-stone-400 hover:text-stone-600">
+              <button onClick={() => setShowNewMsgModal(false)} className="text-stone-400 hover:text-stone-600 min-w-11 min-h-11 flex items-center justify-center">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -688,7 +688,7 @@ export const MessagingCenter: React.FC<MessagingCenterProps> = ({ initialConvers
                 <ShieldAlert className="w-5 h-5 text-amber-600" />
                 <span>Report Communication Issue</span>
               </h3>
-              <button onClick={() => setShowReportModal(false)} className="text-stone-400 hover:text-stone-600">
+              <button onClick={() => setShowReportModal(false)} className="text-stone-400 hover:text-stone-600 min-w-11 min-h-11 flex items-center justify-center">
                 <X className="w-5 h-5" />
               </button>
             </div>

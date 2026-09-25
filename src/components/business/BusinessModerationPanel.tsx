@@ -165,7 +165,8 @@ export const BusinessModerationPanel: React.FC<BusinessModerationPanelProps> = (
               </div>
               <button
                 onClick={() => setSelectedListing(null)}
-                className="text-[#606C38] hover:text-[#132A13] text-sm font-bold"
+                aria-label="Close"
+                className="text-[#606C38] hover:text-[#132A13] text-sm font-bold w-11 h-11 rounded-full bg-[#F9F8F4] flex items-center justify-center shrink-0 cursor-pointer"
               >
                 ✕
               </button>

@@ -107,7 +107,7 @@ export const AiSemanticSearchBar: React.FC<AiSemanticSearchBarProps> = ({
             <button
               type="button"
               onClick={handleClear}
-              className="absolute right-3.5 top-3.5 text-[#606C38] hover:text-[#132A13]"
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 p-2.5 min-w-11 min-h-11 flex items-center justify-center text-[#606C38] hover:text-[#132A13]"
             >
               <X className="w-4 h-4" />
             </button>

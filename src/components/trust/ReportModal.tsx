@@ -82,7 +82,7 @@ export const ReportModal: React.FC<ReportModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="p-1 rounded-full text-white/70 hover:text-white hover:bg-white/10 transition-all"
+            className="p-1 min-w-11 min-h-11 flex items-center justify-center rounded-full text-white/70 hover:text-white hover:bg-white/10 transition-all"
           >
             <X className="w-5 h-5" />
           </button>

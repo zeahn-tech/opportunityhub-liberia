@@ -178,7 +178,7 @@ export const CreateBusinessModal: React.FC<CreateBusinessModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="text-[#606C38] hover:text-[#132A13] text-sm font-bold w-8 h-8 rounded-full bg-[#F9F8F4] flex items-center justify-center"
+            className="text-[#606C38] hover:text-[#132A13] text-sm font-bold w-11 h-11 rounded-full bg-[#F9F8F4] flex items-center justify-center"
           >
             ✕
           </button>

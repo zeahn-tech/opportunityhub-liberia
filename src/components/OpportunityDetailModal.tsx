@@ -176,7 +176,7 @@ export const OpportunityDetailModal: React.FC<OpportunityDetailModalProps> = ({
         <div className="p-6 sm:p-8 bg-[#ECF3E9] border-b border-[#D9E3D5] relative flex-none">
           <button
             onClick={onClose}
-            className="absolute top-6 right-6 w-9 h-9 bg-white/80 hover:bg-white rounded-full flex items-center justify-center text-[#283618] border border-[#D9E3D5] transition-colors cursor-pointer"
+            className="absolute top-6 right-6 w-11 h-11 bg-white/80 hover:bg-white rounded-full flex items-center justify-center text-[#283618] border border-[#D9E3D5] transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>

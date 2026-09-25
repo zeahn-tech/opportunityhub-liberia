@@ -422,8 +422,8 @@ function AppContent() {
                 try {
                   await verifyEmail('eml_demo_instant');
                   showToast('Email verified successfully! Full account capabilities unlocked.');
-                } catch {
-                  showToast('Verification confirmed.');
+                } catch (err) {
+                  showToast(err instanceof Error ? err.message : 'Could not verify your email. Please try again.', 'error');
                 }
               }}
               className="ml-auto underline font-bold text-[#BC6C25] hover:text-[#9A551A] cursor-pointer whitespace-nowrap"

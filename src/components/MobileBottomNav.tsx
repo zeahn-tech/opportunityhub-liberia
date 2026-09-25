@@ -109,7 +109,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ activeTab, set
               </div>
               <button 
                 onClick={() => setShowMoreMenu(false)}
-                className="p-1.5 rounded-full bg-stone-100 dark:bg-stone-900 text-stone-500 hover:text-stone-700 dark:text-stone-400 cursor-pointer"
+                className="p-1.5 min-w-11 min-h-11 flex items-center justify-center rounded-full bg-stone-100 dark:bg-stone-900 text-stone-500 hover:text-stone-700 dark:text-stone-400 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
