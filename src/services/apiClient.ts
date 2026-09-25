@@ -15,7 +15,24 @@ export interface RequestOptions {
 }
 
 class ApiClient {
-  private defaultDelay = envConfig.enableLowBandwidthMode ? 350 : 80;
+  // Historically this delay simulated network latency against the local
+  // in-memory dbClient store, which otherwise resolved instantly and felt
+  // unrealistic. Now that every service in src/services/*.ts (list(),
+  // getById(), etc.) talks to a real Supabase backend with its own real
+  // network round-trip, this artificial sleep is pure added latency on
+  // top of that -- every one of the ~58 apiClient.execute() call sites
+  // across opportunityService/businessService/candidateService/etc. was
+  // paying an unconditional extra 80ms (or 350ms in low-bandwidth mode,
+  // which is backwards: that mode should reduce payload, not add delay)
+  // on every request. Skip the simulation entirely once Supabase is
+  // configured; keep it for the pure local/demo-mode fallback, where
+  // there's no real network call for it to stack on top of.
+  private defaultDelay =
+    envConfig.supabaseUrl && envConfig.supabaseAnonKey
+      ? 0
+      : envConfig.enableLowBandwidthMode
+        ? 350
+        : 80;
 
   private async simulateNetwork(options?: RequestOptions): Promise<void> {
     if (

@@ -139,6 +139,11 @@ function translateError(error: { code?: string; message: string }): never {
 export const businessService = {
   async list(filter?: { county?: string; industry?: string; listingType?: string }): Promise<ApiResponse<BusinessListing[]>> {
     return apiClient.execute(async () => {
+      // Unchanged behavior for existing callers (moderation queue, "my
+      // listings", saved-deals tabs all still expect the full set): pass
+      // no p_limit/p_offset, so the RPC's own generous default (500,
+      // via 20260924150000_business_listings_list_perf_fix.sql) applies
+      // as a safety cap rather than a real page size.
       const { data, error } = await client().rpc('list_business_listings_public', {
         p_county: filter?.county || null,
         p_industry: filter?.industry || null,
@@ -146,6 +151,37 @@ export const businessService = {
       });
       if (error) throw new Error(error.message);
       return ((data as BusinessListingRow[]) || []).map(rowToListing);
+    });
+  },
+
+  /**
+   * Paginated variant for the public "Browse Deals" tab, which is the one
+   * place in the app an unbounded business feed is actually expected to
+   * grow large. Returns whether another page exists so the UI can show a
+   * "Load more" control without a separate count query.
+   */
+  async listPage(filter?: {
+    county?: string;
+    industry?: string;
+    listingType?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<ApiResponse<{ items: BusinessListing[]; hasMore: boolean }>> {
+    return apiClient.execute(async () => {
+      const limit = filter?.limit ?? 20;
+      const offset = filter?.offset ?? 0;
+      const { data, error } = await client().rpc('list_business_listings_public', {
+        p_county: filter?.county || null,
+        p_industry: filter?.industry || null,
+        p_listing_type: filter?.listingType || null,
+        // Fetch one extra row so we can tell whether another page
+        // exists without a separate count query.
+        p_limit: limit + 1,
+        p_offset: offset
+      });
+      if (error) throw new Error(error.message);
+      const rows = ((data as BusinessListingRow[]) || []).map(rowToListing);
+      return { items: rows.slice(0, limit), hasMore: rows.length > limit };
     });
   },
 

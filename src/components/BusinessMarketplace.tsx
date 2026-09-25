@@ -72,6 +72,16 @@ export const BusinessMarketplace: React.FC<BusinessMarketplaceProps> = ({
   const [businesses, setBusinesses] = useState<BusinessListing[]>(initialBusinesses);
   const [activeTab, setActiveTab] = useState<'browse' | 'saved' | 'my_listings' | 'moderation' | 'analytics'>('browse');
 
+  // Render-level pagination: BusinessMarketplace's filters (industry,
+  // price range, verified, free-text search) are all computed client-side
+  // over the already-fetched `businesses` array, so this doesn't reduce
+  // network payload -- but it does keep the DOM/render cost bounded when
+  // the filtered result set is large, instead of mounting every card at
+  // once (see docs/PRODUCTION_CERTIFICATION_REPORT.md, "Performance
+  // Status").
+  const PAGE_SIZE = 24;
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+
   // Search and Filters
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCounty, setSelectedCounty] = useState<County | 'all'>('all');
@@ -100,6 +110,11 @@ export const BusinessMarketplace: React.FC<BusinessMarketplaceProps> = ({
   useEffect(() => {
     setBusinesses(initialBusinesses);
   }, [initialBusinesses]);
+
+  // Reset pagination whenever the filtered set could change shape.
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [activeTab, searchQuery, selectedCounty, selectedIndustry, priceRange, confidentialFilter, verifiedOnly, businesses]);
 
   useEffect(() => {
     loadSavedIds();
@@ -453,7 +468,7 @@ export const BusinessMarketplace: React.FC<BusinessMarketplaceProps> = ({
 
           {/* Grid of Business Listings */}
           <div className="grid grid-cols-1 gap-5">
-            {filteredBusinesses.map((biz) => {
+            {filteredBusinesses.slice(0, visibleCount).map((biz) => {
               const isGated = biz.isConfidential && !biz.accessGranted;
               const isSaved = savedIds.includes(biz.id);
               const firstPhoto = biz.photos && biz.photos.length > 0 ? biz.photos[0] : null;
@@ -615,6 +630,17 @@ export const BusinessMarketplace: React.FC<BusinessMarketplaceProps> = ({
                   className="px-4 py-2 bg-[#283618] text-white rounded-xl text-xs font-bold"
                 >
                   Reset All Filters
+                </button>
+              </div>
+            )}
+
+            {filteredBusinesses.length > visibleCount && (
+              <div className="flex justify-center pt-2">
+                <button
+                  onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
+                  className="px-5 py-2.5 bg-white border border-[#E8E4D9] text-[#283618] rounded-xl text-xs font-bold hover:bg-[#F9F8F6] transition-colors cursor-pointer"
+                >
+                  Load More ({filteredBusinesses.length - visibleCount} remaining)
                 </button>
               </div>
             )}

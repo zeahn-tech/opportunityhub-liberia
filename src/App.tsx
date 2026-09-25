@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import {
   Application,
   ApplicationStage,
@@ -16,24 +16,11 @@ import { HeroSection } from './components/HeroSection';
 import { OpportunityCard } from './components/OpportunityCard';
 import { RightSidebar } from './components/RightSidebar';
 import { OpportunityDetailModal } from './components/OpportunityDetailModal';
-import { BusinessMarketplace } from './components/BusinessMarketplace';
-import { VerificationHub } from './components/VerificationHub';
-import { TrustSafetyAdminCenter } from './components/trust/TrustSafetyAdminCenter';
-import { ReportModal } from './components/trust/ReportModal';
-import { RecruiterWorkspace } from './components/RecruiterWorkspace';
-import { SubscriptionManager } from './components/SubscriptionManager';
-import { MessagingCenter } from './components/messaging/MessagingCenter';
-import { JobManagementDashboard } from './components/employer/JobManagementDashboard';
-import { CandidateDashboard } from './components/candidate/CandidateDashboard';
-import { PostOpportunityModal } from './components/PostOpportunityModal';
-import { AiAssistantModal } from './components/AiAssistantModal';
-import { AiStudioHub } from './components/AiStudioHub';
 import { AiSemanticSearchBar } from './components/AiSemanticSearchBar';
 import { Footer } from './components/Footer';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { LandingScreen } from './components/LandingScreen';
 import { Briefcase, Sparkles, AlertCircle, ShieldCheck, Users, LayoutDashboard, TrendingUp, BarChart3 } from 'lucide-react';
-import { EmployerAnalyticsDashboard } from './components/analytics/EmployerAnalyticsDashboard';
 import { OfflineIndicator } from './components/pwa/OfflineIndicator';
 
 // Foundational Core Providers & Infrastructure
@@ -47,11 +34,40 @@ import { AuthModal } from './components/auth/AuthModal';
 import { DemoModeBanner } from './components/auth/DemoModeBanner';
 import { OnboardingModal } from './components/auth/OnboardingModal';
 import { OpportunityCardSkeleton } from './design-system/Skeleton';
-import { db } from './db/dbClient';
 import { opportunityService } from './services/opportunityService';
 import { businessService } from './services/businessService';
 import { verificationService } from './services/verificationService';
 import { applicationService } from './services/applicationService';
+
+// Route-level views: lazy-loaded so each tab's code (and its own dependency
+// graph, e.g. TrustSafetyAdminCenter's direct dbClient usage or
+// SubscriptionManager's subscriptionService import) ships as its own chunk
+// instead of inflating the initial bundle every visitor downloads. This also
+// resolves the "dynamically imported but also statically imported" build
+// warning for subscriptionService.ts / dbClient.ts, since those static
+// imports now live inside these lazy chunks rather than the entry chunk.
+const BusinessMarketplace = lazy(() => import('./components/BusinessMarketplace').then((m) => ({ default: m.BusinessMarketplace })));
+const VerificationHub = lazy(() => import('./components/VerificationHub').then((m) => ({ default: m.VerificationHub })));
+const TrustSafetyAdminCenter = lazy(() => import('./components/trust/TrustSafetyAdminCenter').then((m) => ({ default: m.TrustSafetyAdminCenter })));
+const RecruiterWorkspace = lazy(() => import('./components/RecruiterWorkspace').then((m) => ({ default: m.RecruiterWorkspace })));
+const SubscriptionManager = lazy(() => import('./components/SubscriptionManager').then((m) => ({ default: m.SubscriptionManager })));
+const MessagingCenter = lazy(() => import('./components/messaging/MessagingCenter').then((m) => ({ default: m.MessagingCenter })));
+const JobManagementDashboard = lazy(() => import('./components/employer/JobManagementDashboard').then((m) => ({ default: m.JobManagementDashboard })));
+const CandidateDashboard = lazy(() => import('./components/candidate/CandidateDashboard').then((m) => ({ default: m.CandidateDashboard })));
+const AiStudioHub = lazy(() => import('./components/AiStudioHub').then((m) => ({ default: m.AiStudioHub })));
+const EmployerAnalyticsDashboard = lazy(() => import('./components/analytics/EmployerAnalyticsDashboard').then((m) => ({ default: m.EmployerAnalyticsDashboard })));
+
+// Modals: not needed until the user opens them, so they're also split out.
+const PostOpportunityModal = lazy(() => import('./components/PostOpportunityModal').then((m) => ({ default: m.PostOpportunityModal })));
+const AiAssistantModal = lazy(() => import('./components/AiAssistantModal').then((m) => ({ default: m.AiAssistantModal })));
+
+// Simple, lightweight fallback for tab-level Suspense boundaries.
+const TabLoadingFallback = () => (
+  <div className="grid grid-cols-1 gap-4" role="status" aria-live="polite">
+    <OpportunityCardSkeleton />
+    <OpportunityCardSkeleton />
+  </div>
+);
 
 function AppContent() {
   const { currency, setCurrency } = useConfig();
@@ -74,6 +90,13 @@ function AppContent() {
   const [businesses, setBusinesses] = useState<BusinessListing[]>([]);
   const [audits, setAudits] = useState<VerificationAudit[]>([]);
   const [applications, setApplications] = useState<Application[]>([]);
+
+  // Render-level pagination for the public opportunity feed -- filtering
+  // happens client-side (see filteredOpportunities below) against the
+  // already-fetched `opportunities` array, so this bounds DOM/render
+  // cost for a large result set rather than reducing network payload.
+  const FEED_PAGE_SIZE = 20;
+  const [visibleFeedCount, setVisibleFeedCount] = useState(FEED_PAGE_SIZE);
 
   const [savedOpportunityIds, setSavedOpportunityIds] = useState<string[]>([]);
   const [selectedOpportunity, setSelectedOpportunity] = useState<Opportunity | null>(null);
@@ -204,6 +227,10 @@ function AppContent() {
     }
     return true;
   });
+
+  useEffect(() => {
+    setVisibleFeedCount(FEED_PAGE_SIZE);
+  }, [selectedCounty, selectedCategory, selectedEmploymentType, selectedWorkplaceModel, minSalary, searchQuery, opportunities]);
 
   // Actions
   const handleToggleSave = (oppId: string) => {
@@ -488,7 +515,7 @@ function AppContent() {
                     </div>
                   </div>
                 ) : (
-                  filteredOpportunities.map((opp) => (
+                  filteredOpportunities.slice(0, visibleFeedCount).map((opp) => (
                     <OpportunityCard
                       key={opp.id}
                       opportunity={opp}
@@ -500,6 +527,17 @@ function AppContent() {
                   ))
                 )}
               </div>
+
+              {!isLoadingFeed && filteredOpportunities.length > visibleFeedCount && (
+                <div className="flex justify-center pt-2">
+                  <button
+                    onClick={() => setVisibleFeedCount((c) => c + FEED_PAGE_SIZE)}
+                    className="px-5 py-2.5 bg-white border border-[#E8E4D9] text-[#283618] rounded-xl text-xs font-bold hover:bg-[#F9F8F6] transition-colors cursor-pointer"
+                  >
+                    Load More ({filteredOpportunities.length - visibleFeedCount} remaining)
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Right Sidebar */}
@@ -517,22 +555,26 @@ function AppContent() {
 
         {/* Tab 2: Business Marketplace M&A */}
         {activeTab === 'businesses' && (
-          <BusinessMarketplace
-            businesses={businesses}
-            currency={currency}
-            onAccessApproved={handleAccessApproved}
-            currentUserId={user?.id}
-            onRefresh={() => refreshBusinesses()}
-          />
+          <Suspense fallback={<TabLoadingFallback />}>
+            <BusinessMarketplace
+              businesses={businesses}
+              currency={currency}
+              onAccessApproved={handleAccessApproved}
+              currentUserId={user?.id}
+              onRefresh={() => refreshBusinesses()}
+            />
+          </Suspense>
         )}
 
         {/* Tab 3: Verification Hub */}
         {activeTab === 'verification' && (
-          <VerificationHub
-            audits={audits}
-            onAuditDecision={handleAuditDecision}
-            onSubmitAudit={handleNewAuditSubmit}
-          />
+          <Suspense fallback={<TabLoadingFallback />}>
+            <VerificationHub
+              audits={audits}
+              onAuditDecision={handleAuditDecision}
+              onSubmitAudit={handleNewAuditSubmit}
+            />
+          </Suspense>
         )}
 
         {/* Tab 4: Recruiter & Employer Workspace (Jobs Dashboard + Candidate Pipeline) */}
@@ -577,62 +619,74 @@ function AppContent() {
               </button>
             </div>
 
-            {recruiterSubView === 'jobs' && (
-              <JobManagementDashboard
-                opportunities={opportunities}
-                onOpenCreateModal={handleOpenCreateModal}
-                onEditOpportunity={handleOpenEditModal}
-                onPublishOpportunity={handlePublishDraft}
-                onUnpublishOpportunity={handleUnpublishDraft}
-                onCloseOpportunity={handleCloseOpportunity}
-                onDeleteOpportunity={handleDeleteOpportunity}
-                onDuplicateOpportunity={handleDuplicateOpportunity}
-                onViewOpportunity={(opp) => setSelectedOpportunity(opp)}
-              />
-            )}
-            {recruiterSubView === 'pipeline' && (
-              <RecruiterWorkspace
-                opportunities={opportunities}
-                applications={applications}
-                onUpdateStage={handleUpdateStage}
-                onOpenCreateModal={handleOpenCreateModal}
-              />
-            )}
-            {recruiterSubView === 'analytics' && (
-              <EmployerAnalyticsDashboard />
-            )}
+            <Suspense fallback={<TabLoadingFallback />}>
+              {recruiterSubView === 'jobs' && (
+                <JobManagementDashboard
+                  opportunities={opportunities}
+                  onOpenCreateModal={handleOpenCreateModal}
+                  onEditOpportunity={handleOpenEditModal}
+                  onPublishOpportunity={handlePublishDraft}
+                  onUnpublishOpportunity={handleUnpublishDraft}
+                  onCloseOpportunity={handleCloseOpportunity}
+                  onDeleteOpportunity={handleDeleteOpportunity}
+                  onDuplicateOpportunity={handleDuplicateOpportunity}
+                  onViewOpportunity={(opp) => setSelectedOpportunity(opp)}
+                />
+              )}
+              {recruiterSubView === 'pipeline' && (
+                <RecruiterWorkspace
+                  opportunities={opportunities}
+                  applications={applications}
+                  onUpdateStage={handleUpdateStage}
+                  onOpenCreateModal={handleOpenCreateModal}
+                />
+              )}
+              {recruiterSubView === 'analytics' && (
+                <EmployerAnalyticsDashboard />
+              )}
+            </Suspense>
           </div>
         )}
 
         {/* Tab 5: Candidate Applications & Profile Management Portal */}
         {activeTab === 'candidate' && (
-          <CandidateDashboard
-            onBrowseJobs={() => handleTabChange('opportunities')}
-            onViewJobDetail={(oppId) => {
-              const opp = opportunities.find((o) => o.id === oppId);
-              if (opp) setSelectedOpportunity(opp);
-            }}
-          />
+          <Suspense fallback={<TabLoadingFallback />}>
+            <CandidateDashboard
+              onBrowseJobs={() => handleTabChange('opportunities')}
+              onViewJobDetail={(oppId) => {
+                const opp = opportunities.find((o) => o.id === oppId);
+                if (opp) setSelectedOpportunity(opp);
+              }}
+            />
+          </Suspense>
         )}
 
         {/* Tab 6: AI Copilot Studio View */}
         {activeTab === 'ai-studio' && (
-          <AiStudioHub />
+          <Suspense fallback={<TabLoadingFallback />}>
+            <AiStudioHub />
+          </Suspense>
         )}
 
         {/* Tab 7: Billing & Subscription */}
         {activeTab === 'billing' && (
-          <SubscriptionManager />
+          <Suspense fallback={<TabLoadingFallback />}>
+            <SubscriptionManager />
+          </Suspense>
         )}
 
         {/* Tab 8: Platform Secure Messaging & Inquiry Center */}
         {activeTab === 'messages' && (
-          <MessagingCenter />
+          <Suspense fallback={<TabLoadingFallback />}>
+            <MessagingCenter />
+          </Suspense>
         )}
 
         {/* Tab 9: Trust & Safety Officer Command Center */}
         {activeTab === 'admin' && (
-          <TrustSafetyAdminCenter currentUserId={user?.id} />
+          <Suspense fallback={<TabLoadingFallback />}>
+            <TrustSafetyAdminCenter currentUserId={user?.id} />
+          </Suspense>
         )}
       </main>
 
@@ -645,21 +699,29 @@ function AppContent() {
         onEdit={handleOpenEditModal}
       />
 
-      <PostOpportunityModal
-        isOpen={isPostModalOpen}
-        onClose={() => {
-          setIsPostModalOpen(false);
-          setOpportunityToEdit(null);
-        }}
-        onSave={handleSaveOpportunity}
-        opportunityToEdit={opportunityToEdit}
-        currency={currency}
-      />
+      {isPostModalOpen && (
+        <Suspense fallback={null}>
+          <PostOpportunityModal
+            isOpen={isPostModalOpen}
+            onClose={() => {
+              setIsPostModalOpen(false);
+              setOpportunityToEdit(null);
+            }}
+            onSave={handleSaveOpportunity}
+            opportunityToEdit={opportunityToEdit}
+            currency={currency}
+          />
+        </Suspense>
+      )}
 
-      <AiAssistantModal
-        isOpen={isAiModalOpen}
-        onClose={() => setIsAiModalOpen(false)}
-      />
+      {isAiModalOpen && (
+        <Suspense fallback={null}>
+          <AiAssistantModal
+            isOpen={isAiModalOpen}
+            onClose={() => setIsAiModalOpen(false)}
+          />
+        </Suspense>
+      )}
 
       <AuthModal />
       <OnboardingModal />

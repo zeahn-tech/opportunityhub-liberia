@@ -219,7 +219,7 @@ Also re-run this phase as a regression check per the Phase 3/4 acceptance criter
 * **Review Details**:
   * **Linter Status**: Checked via `npm run lint` (`tsc --noEmit`) - **PASSED WITH ZERO ERRORS**.
   * **Compiler Status**: Checked via `npm run build` - **PASSED WITH ZERO ERRORS**.
-  * **Automated Test Results**: Execute-run via `vitest` - **100% PASSED (82 tests across 10 test suites successfully completed)**.
+  * **Automated Test Results**: Execute-run via `vitest` — **164 of 166 tests passed** (23 test files; re-verified during the Performance pass below). The 2 failures are in `organizations.test.ts` (`enforces that a user can switch only among authorized organizations without mutating identity`, `ensures membership removal immediately and irreversibly revokes access`) and are pre-existing/environment-dependent, not caused by any change in this report: both call `AuthService.login()`, which requires a live network round-trip to Supabase Auth. Confirmed pre-existing by stashing the Performance-pass changes and re-running — same 2 failures occur against the unmodified code in an environment without a network path to `supabase.co`. The count and suite list below predate the Performance pass and were not independently re-itemized suite-by-suite.
     * `auth.test.ts`: Passed (19 tests)
     * `candidateAndApplication.test.ts`: Passed (7 tests)
     * `dbClient.test.ts`: Passed (5 tests)
@@ -233,7 +233,40 @@ Also re-run this phase as a regression check per the Phase 3/4 acceptance criter
 
 ---
 
-### 8. Deployment Status
+### Performance Status
+
+* **Status**: 🟡 **Improved — Bundle Size & N+1 Fixes Landed; Seed-PII-in-Bundle Deferred**
+* **Note on this section's starting point**: an earlier draft of this report claimed a 1.15 MB / 282.7 KB gzip baseline with seed data "already out of the client bundle." Neither was accurate as of this pass — measured baseline was **1,224.74 KB / 302.05 KB gzip** (a single entry chunk), and seed PII (candidate/org emails, one password hash) was still present in it. The numbers below are measured directly from `npm run build` output and `grep`-ing `dist/assets/*.js`, not carried over from that earlier claim.
+
+* **Bundle size — before / after**:
+  | | Before | After |
+  |---|---|---|
+  | Entry JS chunk | 1,224.74 KB (302.05 KB gzip), one file | 393.40 KB (97.32 KB gzip) |
+  | Largest chunk warning | ⚠️ entry chunk 1.2 MB, over the 500 KB threshold | None — no chunk exceeds 500 KB |
+  | Initial page-load JS+CSS total (entry + eagerly-loaded vendor chunks: `vendor-react`, `vendor-supabase`, `vendor-icons`, `vendor`, plus the stylesheet) | same as entry chunk (~1.22 MB / 302 KB gzip, everything was in one file) | ~955.1 KB raw / ~246.8 KB gzip across 6 cacheable files |
+  | Route/modal chunks, fetched only when opened (largest 3 shown) | n/a — all inline | `BusinessMarketplace` 69.3 KB, `TrustSafetyAdminCenter` 57.5 KB, `CandidateDashboard` 53.6 KB (gzip 14.7 / 11.8 / 10.8 KB) — plus 10 more, each fetched on demand |
+
+* **What was fixed**:
+  * **Route-based code-splitting**: all 9 heavy tab views (`BusinessMarketplace`, `VerificationHub`, `TrustSafetyAdminCenter`, `RecruiterWorkspace`, `SubscriptionManager`, `MessagingCenter`, `JobManagementDashboard`, `CandidateDashboard`, `AiStudioHub`, `EmployerAnalyticsDashboard`) and 2 modals (`PostOpportunityModal`, `AiAssistantModal`) converted from static imports to `React.lazy()` + `Suspense` in `App.tsx`.
+  * **`vite.config.ts` `manualChunks`**: vendor code grouped into `vendor-react`, `vendor-supabase`, `vendor-icons`, `vendor-stripe`/`vendor-motion` (present if used), and `vendor`, so framework code is cached independently of app code.
+  * **Fixed the `subscriptionService.ts` "dynamically imported but also statically imported" warning** — resolved as a side effect of lazy-loading its three static importers (`AiAssistantModal`, `SubscriptionManager`, `CandidateProfileDrawer` via `RecruiterWorkspace`).
+  * **Server-side N+1 in `list_business_listings_public()`** (business listing browse): the prior version looped per matching row calling `get_business_listing_public(id)`, which itself re-queried the row and ran a separate `has_business_access()` check — 1+2N queries per page. Migration `20260924150000_business_listings_list_perf_fix.sql` replaces it with one set-based query using a correlated `EXISTS`, with identical field-redaction output, plus added `p_limit`/`p_offset` (default 500, a safety cap, not a behavior change) and a new `businessService.listPage()` method for UIs that want real pagination.
+  * **Server-side N+1 in `search_candidate_profiles()`** (candidate directory search — not yet wired into any UI component, but fixed regardless): the prior version scanned *every* `candidate_profiles` row with no filter pushdown and ran the same expensive per-row redaction on all of them before applying any filter. Migration `20260924151500_candidate_search_perf_fix.sql` pushes the two safe, plain-column filters (`county`, `years_of_experience`) into the initial row scan. Skill/education/free-text filtering and the redaction logic itself were deliberately left untouched — that logic depends on per-viewer application-history and privacy-toggle state that the codebase intentionally keeps inside one audited `SECURITY DEFINER` function, and re-deriving it in a set-based query risked a privacy regression for a security-sensitive path. **These two migrations have not been applied or tested against a live Postgres instance** — this sandbox has no network path to `supabase.co` — so they're correct by inspection/review, not integration-verified.
+  * **Render-level pagination** added to the public opportunity feed (`App.tsx`) and Business Marketplace "Browse Deals" tab: both cap rendered cards at a page size (20 / 24) with a "Load More" button, resetting when filters change. This bounds DOM/render cost for large result sets; it does not reduce network payload, since both lists' rich client-side filtering (price range, verified-only, multi-field search) already requires the full filtered array in memory. Full server-side pagination for those views was scoped out of this pass as higher-risk (would require moving all filter facets server-side) for a lower payoff than the fixes above.
+  * **Removed an unconditional artificial network delay**: `apiClient.execute()` — used by ~58 call sites across all 8 Supabase-backed services — was sleeping 80ms (350ms in low-bandwidth mode) before every request, a leftover from when it simulated latency against the old instant local `dbClient` store. Against the real Supabase backend this was pure added latency on every list/detail/mutation call, and low-bandwidth mode made it *worse* (more delay, not less payload). Now skipped entirely once Supabase is configured.
+  * **Dead code removed**: `App.tsx` had an unused `import { db } from './db/dbClient'`.
+  * Minor: added `loading="lazy"` to the one `<img>` that was missing it (`CreateBusinessModal.tsx`'s own-photo preview grid).
+
+* **Verified, not changed** (already correct or already sufficient going in):
+  * `opportunityService.list()`, `businessService.list()`, `applicationService.list*()` already push their filters into a single Supabase query each (no per-row loops in the JS service layer).
+  * Business listing photos (the only raster images in the app beyond generated PWA icons) already had `loading="lazy"` and were already gated behind low-bandwidth mode (image skipped entirely, not just deferred) in both places they render.
+  * PWA icons are generated as PNG (not WebP) by `generate-png-icons.js` — correct as-is; these are small, manifest-mandated icon sizes (192/512/apple-touch), not a bundle-size concern.
+  * No polling exists anywhere in the codebase, so there was nothing for low-bandwidth mode to reduce there.
+
+* **Explicitly not fixed — seed PII still ships in the production bundle**: `export const db = DatabaseClient.getInstance()` in `dbClient.ts` runs eagerly at module load, and `authService.ts` / `permissionEngine.ts` / `TrustSafetyAdminCenter.tsx` all still statically import it, so the ~3,700-line file (including the inline `SEED_USERS` array with emails and one password hash) rides into the bundle regardless of demo mode. Confirmed present in the built `dist/assets/index-*.js` both before and after this pass. A safe fix requires converting `dbClient`'s synchronous API to something that can be lazily loaded — a nontrivial async refactor of a file already flagged in `docs/PHASE3_GAP_CLOSURE.md` as needing dedicated, carefully-verified attention rather than a partial change bundled into an unrelated pass. Left as-is rather than attempted-and-unverified.
+
+---
+
 
 * **Status**: 🟢 **100% Fully Implemented & Certified**
 * **Review Details**:

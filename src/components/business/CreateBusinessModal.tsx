@@ -323,7 +323,7 @@ export const CreateBusinessModal: React.FC<CreateBusinessModalProps> = ({
                 <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 pt-2">
                   {photos.map((url, idx) => (
                     <div key={idx} className="relative group rounded-xl overflow-hidden h-20 border border-[#E8E4D9]">
-                      <img src={url} alt={`Photo ${idx + 1}`} className="w-full h-full object-cover" />
+                      <img src={url} alt={`Photo ${idx + 1}`} className="w-full h-full object-cover" loading="lazy" />
                       <button
                         type="button"
                         onClick={() => handleRemovePhoto(idx)}
