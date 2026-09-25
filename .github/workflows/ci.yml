@@ -7,6 +7,11 @@ on:
     branches: [main]
 
 jobs:
+  # ------------------------------------------------------------------
+  # Build, type-check, test, and the bundle-confidentiality gates.
+  # Everything here runs on plain ubuntu-latest with no external
+  # services -- fast, and required on every push/PR.
+  # ------------------------------------------------------------------
   validate:
     runs-on: ubuntu-latest
     steps:
@@ -25,7 +30,21 @@ jobs:
         run: npm run lint
 
       - name: Run test suite
+        # 164/166 tests are fully self-contained (in-memory dbClient / RBAC / env /
+        # logger fixtures). The remaining 2, in organizations.test.ts, exercise
+        # AuthService.login() against a REAL Supabase Auth endpoint over the network
+        # and will fail with "fetch failed" unless SUPABASE_TEST_URL /
+        # SUPABASE_TEST_ANON_KEY secrets are configured for this repo (Settings ->
+        # Secrets and variables -> Actions) pointing at a real (ideally disposable/
+        # staging) Supabase project. Without those secrets set, this step is EXPECTED
+        # to report 2 failures -- that's a known, pre-existing gap in test isolation,
+        # not something introduced by this workflow. See docs/DEPLOYMENT.md's CI
+        # section and docs/PRODUCTION_CERTIFICATION_REPORT.md's Testing Status for
+        # the full account of this.
         run: npm test -- --run
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.SUPABASE_TEST_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_TEST_ANON_KEY }}
 
       - name: Build production bundle
         run: npm run build
@@ -39,3 +58,82 @@ jobs:
 
       - name: Verify SUPABASE_SERVICE_ROLE_KEY never reaches the client bundle
         run: npm run check:no-service-key-leak
+
+      - name: Verify no secrets are committed to the repo
+        run: npm run check:no-secrets-committed
+
+      - name: Bundle-confidentiality regression check (seed PII)
+        # This is a REGRESSION GATE, not a currently-passing check -- see
+        # docs/PHASE3_GAP_CLOSURE.md and the certification report's
+        # Performance / UI Status sections. src/db/dbClient.ts's seed
+        # dataset (SEED_USERS: real-looking emails + one password hash)
+        # is a known, still-open leak into the client bundle. This step
+        # is intentionally wired to FAIL the build until that's fixed,
+        # so the failure below is expected and correct, not a bug in
+        # this workflow -- it's the whole point of a regression gate:
+        # it stays red as a visible reminder until the underlying issue
+        # is actually fixed, and then it silently starts protecting
+        # against the leak coming back.
+        run: npm run check:no-seed-pii-in-bundle
+
+      - name: Secret scanning (gitleaks)
+        # Config: .gitleaks.toml at repo root (auto-detected by the action) --
+        # extends gitleaks' default rules with a narrow, documented allowlist
+        # for two known-synthetic demo password hashes in src/db/dbClient.ts
+        # (see that file's comments and .gitleaks.toml for why they're not
+        # real secrets). Verified locally: `gitleaks git --config .gitleaks.toml .`
+        # reports 0 leaks against this repo's full history as of this commit.
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ------------------------------------------------------------------
+  # RLS security test suite (Phase 4/6) against a real, ephemeral
+  # Supabase Postgres instance spun up by the Supabase CLI in this
+  # runner (uses Docker, which is preinstalled on GitHub-hosted
+  # ubuntu-latest runners). No external test-project secret needed:
+  # `supabase start` applies every migration in supabase/migrations/
+  # to a throwaway local database, including the pgTAP-enabling
+  # migration, and the RLS test file runs against that.
+  #
+  # supabase/tests/rls_security_test_matrix.sql wraps its own fixtures
+  # and every assertion in `begin; ... rollback;`, so it never leaves
+  # data behind even on a persistent instance -- safe to run here.
+  # ------------------------------------------------------------------
+  rls-security-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Start local Supabase (applies all migrations)
+        run: supabase start --ignore-health-check
+
+      - name: Run RLS security test matrix (pgTAP)
+        run: |
+          set -euo pipefail
+          DB_URL="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+          OUTPUT=$(psql "$DB_URL" -v ON_ERROR_STOP=1 -t -A -f supabase/tests/rls_security_test_matrix.sql)
+          echo "$OUTPUT"
+          echo "$OUTPUT" > rls_test_output.txt
+          TOTAL=$(grep -cE '^(ok|not ok) ' rls_test_output.txt || true)
+          FAILED=$(grep -cE '^not ok ' rls_test_output.txt || true)
+          echo "RLS assertions: $TOTAL total, $FAILED failed."
+          if [ "$TOTAL" -eq 0 ]; then
+            echo "FAIL: no pgTAP assertions were captured -- the test file's output format may have changed. Treat as a failure, not a pass."
+            exit 1
+          fi
+          if [ "$FAILED" -gt 0 ]; then
+            echo "FAIL: $FAILED RLS assertion(s) failed. See output above for the '[table][case] description' of each."
+            grep -E '^not ok ' rls_test_output.txt
+            exit 1
+          fi
+          echo "PASS: all $TOTAL RLS assertions passed."
+
+      - name: Stop local Supabase
+        if: always()
+        run: supabase stop --no-backup

@@ -11,7 +11,9 @@
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "test": "vitest run",
-    "check:no-service-key-leak": "bash scripts/check-no-service-role-in-client.sh"
+    "check:no-service-key-leak": "bash scripts/check-no-service-role-in-client.sh",
+    "check:no-seed-pii-in-bundle": "bash scripts/check-no-seed-pii-in-bundle.sh",
+    "check:no-secrets-committed": "bash scripts/check-no-secrets-committed.sh"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

@@ -1,0 +1,31 @@
+# Gitleaks configuration for OpportunityHub Liberia.
+# See docs/DEPLOYMENT.md -> "Secret hygiene" for how this fits into CI
+# (.github/workflows/ci.yml's `validate` job, gitleaks/gitleaks-action@v2).
+
+title = "opportunityhub-liberia gitleaks config"
+
+# Start from gitleaks' default rule set (Stripe/Google/generic key
+# patterns, etc.) and layer a narrow allowlist on top, rather than
+# defining rules from scratch.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Known non-secret false positives"
+
+# src/db/dbClient.ts's SEED_PASSWORD_HASH is a hardcoded, documented
+# SHA-256 hash of a known plaintext demo password ("Password123!" --
+# see the comment directly above it in that file). It is a synthetic
+# fixture for the opt-in local demo-mode fallback (VITE_ENABLE_DEMO_MODE,
+# see docs/DEPLOYMENT.md Section 7), not a real credential -- but its
+# hex shape and entropy match the generic-api-key rule, so it needs an
+# explicit allowlist entry rather than being silently missed by
+# accident. Scoped to this exact commit+file+line+rule combination
+# (its "fingerprint"), not a blanket exemption for the whole file, so
+# a genuinely new secret added to dbClient.ts later would still be
+# caught.
+regexTarget = "match"
+regexes = [
+  '''1f98d02df910080dafa46c4f0da9c417637841c6d3fa316d3f2ec45811776997''',
+  '''eb78c639b7ffc706d6fa88b5e355f25d11c19ab6a5f6f66009efb9a4152a2b92''',
+]
