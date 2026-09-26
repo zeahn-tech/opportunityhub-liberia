@@ -70,217 +70,36 @@ import {
   INITIAL_VERIFICATION_AUDITS,
   INITIAL_VERIFICATION_REQUESTS
 } from '../data/seedData';
+import {
+  SEED_ADMIN_PASSWORD_HASH,
+  SEED_MEMBERSHIPS,
+  SEED_PASSWORD_HASH,
+  SEED_SALT,
+  SEED_USERS
+} from './seedUserFixtures';
 
-// Known seed salt & hash for "Password123!" for immediate test/demo access
-const SEED_SALT = 'e9f4c3a1782d059b8412acb9';
-// SHA-256 hash of "e9f4c3a1782d059b8412acb9:Password123!:liberia-opphub-sec-v1"
-const SEED_PASSWORD_HASH = '1f98d02df910080dafa46c4f0da9c417637841c6d3fa316d3f2ec45811776997';
+// Build-time-literal check for whether demo-seed data (real-looking
+// user PII: names, emails, phone numbers, password hashes -- see
+// seedUserFixtures.ts) should be included at all. Intentionally NOT
+// envConfig.enableDemoMode, which wraps this in a runtime
+// parseBoolean() call that Vite/esbuild cannot statically fold away.
+// This exact textual form (`import.meta.env.VITE_X === 'literal'`)
+// lets Vite inline the env var as a literal string at build time, so
+// the minifier can dead-code-eliminate every `if (DEMO_SEED_ENABLED)`
+// branch below -- and therefore every reference to seedUserFixtures.ts
+// -- out of any build where VITE_ENABLE_DEMO_MODE isn't literally
+// "true", which then lets Rollup tree-shake that whole module out of
+// the bundle. scripts/check-no-seed-pii-in-bundle.sh is the
+// regression test that verifies this actually holds in the built
+// output, not just in theory.
+//
+// Do not replace this with envConfig.enableDemoMode, and do not
+// import SEED_USERS/SEED_MEMBERSHIPS/etc. anywhere outside this file
+// without going through the same literal-guard pattern -- an
+// unguarded reference anywhere in the import graph defeats the
+// tree-shaking for everyone.
+const DEMO_SEED_ENABLED = import.meta.env.VITE_ENABLE_DEMO_MODE === 'true';
 
-const DEFAULT_USER_PREFERENCES: UserPreferences = {
-  emailNotifications: true,
-  smsNotifications: true,
-  marketingAlerts: false,
-  profileVisibility: 'public',
-  showPhoneNumber: true
-};
-
-export const SEED_USERS: User[] = [
-  {
-    id: 'user-seeker-1',
-    email: 'tamba.kollie@gmail.com',
-    fullName: 'Tamba Kollie',
-    phoneNumber: '+231 77 554 9912',
-    primaryRole: 'job_seeker',
-    systemRole: 'user',
-    accountStatus: 'active',
-    primaryCounty: 'Montserrado',
-    isEmailVerified: true,
-    isPhoneVerified: true,
-    createdAt: '2026-08-15T09:00:00Z',
-    lastLoginAt: '2026-09-04T10:00:00Z',
-    capabilities: ['find_opportunities'],
-    onboardingCompleted: true,
-    preferences: DEFAULT_USER_PREFERENCES
-  },
-  {
-    id: 'user-employer-1',
-    email: 'hiring@savethechildren.lr',
-    fullName: 'Dr. Evelyn Fahnbulleh',
-    phoneNumber: '+231 88 123 4400',
-    primaryRole: 'employer',
-    systemRole: 'user',
-    accountStatus: 'active',
-    primaryCounty: 'Montserrado',
-    isEmailVerified: true,
-    isPhoneVerified: true,
-    createdAt: '2026-08-10T11:30:00Z',
-    lastLoginAt: '2026-09-05T08:00:00Z',
-    capabilities: ['hire_or_recruit'],
-    onboardingCompleted: true,
-    preferences: DEFAULT_USER_PREFERENCES
-  },
-  {
-    id: 'user-recruiter-1',
-    email: 'agency@liberiaworkforce.com',
-    fullName: 'Korto Flomo',
-    phoneNumber: '+231 88 776 1122',
-    primaryRole: 'recruiter',
-    systemRole: 'user',
-    accountStatus: 'active',
-    primaryCounty: 'Montserrado',
-    isEmailVerified: true,
-    isPhoneVerified: true,
-    createdAt: '2026-08-20T14:15:00Z',
-    lastLoginAt: '2026-09-03T16:00:00Z',
-    capabilities: ['hire_or_recruit'],
-    onboardingCompleted: true,
-    preferences: DEFAULT_USER_PREFERENCES
-  },
-  {
-    id: 'user-seller-1',
-    email: 'seller@pepperbird.lr',
-    fullName: 'Samuel Tweh',
-    phoneNumber: '+231 77 334 9012',
-    primaryRole: 'business_seller',
-    systemRole: 'user',
-    accountStatus: 'active',
-    primaryCounty: 'Montserrado',
-    isEmailVerified: true,
-    isPhoneVerified: true,
-    createdAt: '2026-08-22T10:00:00Z',
-    capabilities: ['sell_business'],
-    onboardingCompleted: true,
-    preferences: DEFAULT_USER_PREFERENCES
-  },
-  {
-    id: 'user-buyer-1',
-    email: 'investor@capitolhill.lr',
-    fullName: 'Nathaniel Sherman',
-    phoneNumber: '+231 77 889 0099',
-    primaryRole: 'buyer',
-    systemRole: 'user',
-    accountStatus: 'active',
-    primaryCounty: 'Montserrado',
-    isEmailVerified: true,
-    isPhoneVerified: true,
-    createdAt: '2026-08-25T16:00:00Z',
-    capabilities: ['find_business'],
-    onboardingCompleted: true,
-    preferences: DEFAULT_USER_PREFERENCES
-  },
-  {
-    id: 'user-provider-1',
-    email: 'patrick@gantacivil.lr',
-    fullName: 'Eng. Patrick Sumo',
-    phoneNumber: '+231 88 612 0041',
-    primaryRole: 'service_provider',
-    systemRole: 'user',
-    accountStatus: 'active',
-    primaryCounty: 'Nimba',
-    isEmailVerified: true,
-    isPhoneVerified: true,
-    createdAt: '2026-08-28T12:00:00Z',
-    capabilities: ['offer_services', 'find_opportunities'],
-    onboardingCompleted: true,
-    preferences: DEFAULT_USER_PREFERENCES
-  },
-  {
-    id: 'user-orgadmin-1',
-    email: 'admin@savethechildren.lr',
-    fullName: 'Madam Marie Weah',
-    phoneNumber: '+231 77 444 8888',
-    primaryRole: 'organization_admin',
-    systemRole: 'user',
-    accountStatus: 'active',
-    primaryCounty: 'Montserrado',
-    isEmailVerified: true,
-    isPhoneVerified: true,
-    createdAt: '2026-08-01T08:00:00Z',
-    capabilities: ['hire_or_recruit'],
-    onboardingCompleted: true,
-    preferences: DEFAULT_USER_PREFERENCES
-  },
-  {
-    id: 'user-admin-1',
-    email: 'info.tracenetlib@gmail.com',
-    fullName: 'Platform Administrator',
-    phoneNumber: '+231 77 000 1111',
-    primaryRole: 'platform_admin',
-    systemRole: 'platform_admin',
-    accountStatus: 'active',
-    primaryCounty: 'Montserrado',
-    isEmailVerified: true,
-    isPhoneVerified: true,
-    createdAt: '2026-07-01T00:00:00Z',
-    capabilities: ['find_opportunities', 'hire_or_recruit', 'sell_business', 'find_business', 'offer_services'],
-    onboardingCompleted: true,
-    preferences: DEFAULT_USER_PREFERENCES
-  },
-  {
-    id: 'user-gov-1',
-    email: 'procurement@mpw.gov.lr',
-    fullName: 'Hon. Emmanuel Sumo',
-    phoneNumber: '+231 77 004 8812',
-    primaryRole: 'organization_admin',
-    systemRole: 'verification_officer',
-    accountStatus: 'active',
-    primaryCounty: 'Montserrado',
-    isEmailVerified: true,
-    isPhoneVerified: true,
-    createdAt: '2026-08-01T08:00:00Z',
-    capabilities: ['hire_or_recruit'],
-    onboardingCompleted: true,
-    preferences: DEFAULT_USER_PREFERENCES
-  }
-];
-
-export const SEED_MEMBERSHIPS: OrganizationMembership[] = [
-  {
-    id: 'mem-1',
-    organizationId: 'org-save-children',
-    userId: 'user-employer-1',
-    orgRole: 'owner',
-    status: 'active',
-    permissions: ['all'],
-    createdAt: '2026-08-10T11:30:00Z'
-  },
-  {
-    id: 'mem-2',
-    organizationId: 'org-save-children',
-    userId: 'user-orgadmin-1',
-    orgRole: 'admin',
-    status: 'active',
-    permissions: ['manage_members', 'manage_jobs', 'review_candidates'],
-    createdAt: '2026-08-01T08:00:00Z'
-  },
-  {
-    id: 'mem-3',
-    organizationId: 'org-mpw-gov',
-    userId: 'user-gov-1',
-    orgRole: 'admin',
-    status: 'active',
-    permissions: ['all'],
-    createdAt: '2026-08-01T08:00:00Z'
-  },
-  {
-    id: 'mem-4',
-    organizationId: 'org-nimba-agri',
-    userId: 'user-recruiter-1',
-    orgRole: 'recruiter',
-    status: 'active',
-    permissions: ['manage_jobs', 'review_candidates'],
-    createdAt: '2026-08-20T14:15:00Z'
-  },
-  {
-    id: 'mem-5',
-    organizationId: 'org-kofa-tech',
-    userId: 'user-provider-1',
-    orgRole: 'owner',
-    status: 'active',
-    permissions: ['all'],
-    createdAt: '2026-08-28T12:00:00Z'
-  }
-];
 
 export class DatabaseClient {
   private static instance: DatabaseClient;
@@ -303,12 +122,13 @@ export class DatabaseClient {
     const orgs = storageAdapter.getItem<Organization[]>('organizations');
     if (!orgs || orgs.length === 0) {
       logger.info('DBClient', 'Bootstrapping relational seed datasets into storage adapter.');
+      if (DEMO_SEED_ENABLED) {
       storageAdapter.setItem('organizations', INITIAL_ORGANIZATIONS);
       storageAdapter.setItem('opportunities', INITIAL_OPPORTUNITIES);
       storageAdapter.setItem('businesses', INITIAL_BUSINESS_LISTINGS);
       storageAdapter.setItem('audits', INITIAL_VERIFICATION_AUDITS);
-      storageAdapter.setItem('users', SEED_USERS);
-      storageAdapter.setItem('memberships', SEED_MEMBERSHIPS);
+      storageAdapter.setItem('users', DEMO_SEED_ENABLED ? SEED_USERS : []);
+      storageAdapter.setItem('memberships', DEMO_SEED_ENABLED ? SEED_MEMBERSHIPS : []);
       storageAdapter.setItem('applications', INITIAL_APPLICATIONS);
       storageAdapter.setItem('candidate_profiles', INITIAL_CANDIDATE_PROFILES);
       storageAdapter.setItem('access_requests', []);
@@ -495,50 +315,107 @@ export class DatabaseClient {
       storageAdapter.setItem('user_blocks', []);
       storageAdapter.setItem('message_reports', []);
 
-      // Seed Credentials for all default users (password: Password123!)
-      const credentials: UserAuthCredential[] = SEED_USERS.map((u) => ({
-        userId: u.id,
-        passwordHash: u.id === 'user-admin-1' ? 'eb78c639b7ffc706d6fa88b5e355f25d11c19ab6a5f6f66009efb9a4152a2b92' : SEED_PASSWORD_HASH,
-        salt: SEED_SALT,
-        failedLoginAttempts: 0,
-        lockedUntil: null,
-        passwordResetToken: null,
-        passwordResetExpiresAt: null,
-        emailVerificationToken: null,
-        emailVerificationExpiresAt: null,
-        updatedAt: '2026-08-15T00:00:00Z'
-      }));
+      // Seed Credentials for all default users (password: Password123!) --
+      // only when demo mode is enabled; see DEMO_SEED_ENABLED above.
+      const credentials: UserAuthCredential[] = DEMO_SEED_ENABLED
+        ? SEED_USERS.map((u) => ({
+            userId: u.id,
+            passwordHash: u.id === 'user-admin-1' ? SEED_ADMIN_PASSWORD_HASH : SEED_PASSWORD_HASH,
+            salt: SEED_SALT,
+            failedLoginAttempts: 0,
+            lockedUntil: null,
+            passwordResetToken: null,
+            passwordResetExpiresAt: null,
+            emailVerificationToken: null,
+            emailVerificationExpiresAt: null,
+            updatedAt: '2026-08-15T00:00:00Z'
+          }))
+        : [];
       storageAdapter.setItem('credentials', credentials);
 
-      // Seed Profiles
-      const profiles: UserProfile[] = SEED_USERS.map((u) => ({
-        userId: u.id,
-        headline: `${u.primaryRole?.replace('_', ' ')?.toUpperCase() || 'PROFESSIONAL'} in ${u.primaryCounty}`,
-        bio: `Verified professional on OpportunityHub Liberia.`,
-        phone: u.phoneNumber,
-        county: u.primaryCounty,
-        city: 'Monrovia',
-        skills: ['Leadership', 'Management', 'Operations'],
-        visibility: 'public',
-        updatedAt: '2026-08-15T00:00:00Z',
-        capabilities: u.capabilities || ['find_opportunities'],
-        verificationState: 'verified'
-      }));
+      // Seed Profiles -- same guard as above.
+      const profiles: UserProfile[] = DEMO_SEED_ENABLED
+        ? SEED_USERS.map((u) => ({
+            userId: u.id,
+            headline: `${u.primaryRole?.replace('_', ' ')?.toUpperCase() || 'PROFESSIONAL'} in ${u.primaryCounty}`,
+            bio: `Verified professional on OpportunityHub Liberia.`,
+            phone: u.phoneNumber,
+            county: u.primaryCounty,
+            city: 'Monrovia',
+            skills: ['Leadership', 'Management', 'Operations'],
+            visibility: 'public',
+            updatedAt: '2026-08-15T00:00:00Z',
+            capabilities: u.capabilities || ['find_opportunities'],
+            verificationState: 'verified'
+          }))
+        : [];
       storageAdapter.setItem('profiles', profiles);
+      } else {
+        // Demo mode is off (the default for any real deployment): seed
+        // nothing. Every array below would otherwise contain real-looking
+        // PII (names, emails, phone numbers) from seedUserFixtures.ts and
+        // src/data/seedData.ts -- see DEMO_SEED_ENABLED above and
+        // scripts/check-no-seed-pii-in-bundle.sh, which is the regression
+        // test that verifies none of it reaches a production build. A
+        // real deployment reads through Supabase (src/services/*.ts), not
+        // this in-memory store, so an empty local store here is correct,
+        // not a degraded state.
+        storageAdapter.setItem('organizations', []);
+        storageAdapter.setItem('opportunities', []);
+        storageAdapter.setItem('businesses', []);
+        storageAdapter.setItem('audits', []);
+        storageAdapter.setItem('users', []);
+        storageAdapter.setItem('memberships', []);
+        storageAdapter.setItem('applications', []);
+        storageAdapter.setItem('candidate_profiles', []);
+        storageAdapter.setItem('access_requests', []);
+        storageAdapter.setItem('audit_logs', []);
+        storageAdapter.setItem('sessions', []);
+        storageAdapter.setItem('invitations', []);
+        storageAdapter.setItem('verification_requests', []);
+        storageAdapter.setItem('content_moderation_records', []);
+        storageAdapter.setItem('content_reports', []);
+        storageAdapter.setItem('account_restrictions', []);
+        storageAdapter.setItem('suspicious_events', []);
+        storageAdapter.setItem('conversations', []);
+        storageAdapter.setItem('direct_messages', []);
+        storageAdapter.setItem('notifications', []);
+        storageAdapter.setItem('user_blocks', []);
+        storageAdapter.setItem('message_reports', []);
+        storageAdapter.setItem('credentials', []);
+      }
     }
 
     const cProfs = storageAdapter.getItem<CandidateProfile[]>('candidate_profiles');
-    if (!cProfs || cProfs.length === 0) {
+    if (DEMO_SEED_ENABLED && (!cProfs || cProfs.length === 0)) {
       storageAdapter.setItem('candidate_profiles', INITIAL_CANDIDATE_PROFILES);
     }
 
     const apps = storageAdapter.getItem<Application[]>('applications');
-    if (!apps || apps.length === 0) {
+    if (DEMO_SEED_ENABLED && (!apps || apps.length === 0)) {
       storageAdapter.setItem('applications', INITIAL_APPLICATIONS);
     }
 
     this.initialized = true;
     logger.debug('DBClient', 'DatabaseClient initialized successfully.');
+  }
+
+  /**
+   * Returns the first seeded demo user, or null if demo mode isn't
+   * enabled for this build. This is the ONLY sanctioned way for code
+   * outside this file to reach SEED_USERS -- callers (authService.ts's
+   * initial-session fallback) must go through this method rather than
+   * importing SEED_USERS directly, because a direct import anywhere
+   * else in the import graph, even behind its own runtime guard, would
+   * defeat the build-time tree-shaking DEMO_SEED_ENABLED relies on
+   * (see the comment on DEMO_SEED_ENABLED above and
+   * scripts/check-no-seed-pii-in-bundle.sh).
+   */
+  public getDefaultDemoUser(): User | null {
+    if (DEMO_SEED_ENABLED && SEED_USERS.length > 0) {
+      return SEED_USERS[0];
+    }
+    return null;
   }
 
   // --- Audit Log Emitter ---
@@ -882,7 +759,7 @@ export class DatabaseClient {
 
     // Verify password
     let passwordMatches = false;
-    if (userCred.passwordHash === SEED_PASSWORD_HASH && password === 'Password123!') {
+    if (DEMO_SEED_ENABLED && userCred.passwordHash === SEED_PASSWORD_HASH && password === 'Password123!') {
       passwordMatches = true;
     } else {
       passwordMatches = await verifyPassword(password, userCred.salt, userCred.passwordHash);
@@ -1581,7 +1458,7 @@ export class DatabaseClient {
     if (!cred) throw new NotFoundError('Credentials', userId);
 
     let currentMatches = false;
-    if (cred.passwordHash === SEED_PASSWORD_HASH && currentPass === 'Password123!') {
+    if (DEMO_SEED_ENABLED && cred.passwordHash === SEED_PASSWORD_HASH && currentPass === 'Password123!') {
       currentMatches = true;
     } else {
       currentMatches = await verifyPassword(currentPass, cred.salt, cred.passwordHash);

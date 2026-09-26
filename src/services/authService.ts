@@ -10,7 +10,7 @@ import {
   UserCapability,
   UserSession
 } from '../types';
-import { db, SEED_USERS } from '../db/dbClient';
+import { db } from '../db/dbClient';
 import { logger } from '../core/logging/logger';
 import { storageAdapter } from '../db/storageAdapter';
 import { getSupabaseClient } from '../lib/supabaseClient';
@@ -176,8 +176,8 @@ class AuthService {
       return { ...saved, isDemoMode: !!saved.isDemoMode };
     }
 
-    if (envConfig.enableDemoMode && SEED_USERS.length > 0) {
-      const defaultUser = SEED_USERS[0];
+    const defaultUser = envConfig.enableDemoMode ? db.getDefaultDemoUser() : null;
+    if (defaultUser) {
       const newSession = db.createSession(defaultUser.id, 'Initial Session');
       let activeOrg: Organization | null = null;
       const memberships = db.getMembershipsByUserId(defaultUser.id);

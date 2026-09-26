@@ -616,7 +616,7 @@ export const MessagingCenter: React.FC<MessagingCenterProps> = ({ initialConvers
                   required
                   value={newMsgRecipientEmail}
                   onChange={(e) => setNewMsgRecipientEmail(e.target.value)}
-                  placeholder="e.g. hiring@savethechildren.lr or seller@business.lr"
+                  placeholder="e.g. name@organization.com"
                   className="w-full text-xs p-3 bg-[#F9F8F6] rounded-xl border border-[#E8E4D9] outline-none"
                 />
               </div>

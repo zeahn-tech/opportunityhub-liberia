@@ -90,9 +90,20 @@ export const TrustSafetyAdminCenter: React.FC<{ currentUserId?: string }> = () =
     );
   }, [user]);
 
-  // Demo Admin Login Helper for quick sandbox testing
+  // Demo Admin Login Helper for quick sandbox testing. Gated on the same
+  // build-time-literal check as src/db/dbClient.ts's DEMO_SEED_ENABLED
+  // (intentionally NOT envConfig.enableDemoMode -- see that file's comment
+  // for why) so esbuild can dead-code-eliminate this entire helper,
+  // including the hardcoded demo credentials below, out of any build
+  // where VITE_ENABLE_DEMO_MODE isn't literally "true". This must never
+  // exist in a real deployment: it is a platform-admin login bypass
+  // visible to any unauthenticated visitor who reaches this screen.
+  // scripts/check-no-seed-pii-in-bundle.sh is the regression test that
+  // verifies this holds in the built output.
+  const DEMO_ADMIN_LOGIN_ENABLED = import.meta.env.VITE_ENABLE_DEMO_MODE === 'true';
   const [isLoggingInDemo, setIsLoggingInDemo] = useState(false);
   const handleDemoAdminLogin = async () => {
+    if (!DEMO_ADMIN_LOGIN_ENABLED) return;
     setIsLoggingInDemo(true);
     try {
       await login('info.tracenetlib@gmail.com', 'Champion0041900419');
@@ -544,6 +555,7 @@ export const TrustSafetyAdminCenter: React.FC<{ currentUserId?: string }> = () =
           </p>
         </div>
 
+        {DEMO_ADMIN_LOGIN_ENABLED && (
         <div className="bg-[#FEFAE0] p-5 rounded-2xl border border-[#E8E4D9] text-left text-xs space-y-3">
           <span className="font-bold text-[#BC6C25] uppercase tracking-wider block">Developer Sandbox Testing Bypass</span>
           <p className="text-stone-600">
@@ -558,6 +570,7 @@ export const TrustSafetyAdminCenter: React.FC<{ currentUserId?: string }> = () =
             <span>{isLoggingInDemo ? 'Simulating Admin Session...' : 'Unlock & Login as Demo Admin'}</span>
           </button>
         </div>
+        )}
       </div>
     );
   }
